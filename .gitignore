@@ -1,0 +1,30 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.python-version
+
+# --- Project runtime output ---
+# El histórico de oportunidades y los reportes son datos generados: no se
+# versionan. Un superagente externo los consume desde la rama de Actions o
+# desde el artefacto del workflow.
+opportunities.json
+opportunities.json.*
+reports/
+*.corrupto.*.json
+
+# --- Local / personal configuration ---
+# Watchlist personal (se fusiona con config.py) y secretos.
+watchlist.json
+.env
+.env.*
+
+# --- OS / editors ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

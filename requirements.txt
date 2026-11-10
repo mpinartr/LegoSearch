@@ -1,0 +1,5 @@
+# LegoSearch — dependencias de ejecución (únicas).
+# feedparser: lectura robusta de RSS/Atom (tolera feeds mal formados).
+# requests  : capa HTTP con timeouts y User-Agent propio para evitar bloqueos.
+feedparser
+requests

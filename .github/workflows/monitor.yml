@@ -1,0 +1,71 @@
+# Ejecución programada opcional.
+#
+# Este workflow NO notifica nada: solo ejecuta el motor y publica
+# `opportunities.json` como artefacto descargable (y en la rama runtime-data si
+# se habilita). Un superagente externo puede:
+#   - descargar el artefacto `legosearch-data`,
+#   - leer la rama `runtime-data` (recomendado si quieres histórico persistente),
+#   - o subir/consumir el JSON desde su propio repositorio.
+#
+# Para activar el commit del histórico en una rama, quita el comentario del
+# último paso y da permisos de escritura al GITHUB_TOKEN.
+name: monitor-opportunities
+
+on:
+  schedule:
+    # Cada 6 horas (UTC). Ajusta según tu ritmo de revisión.
+    - cron: "15 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scan
+        run: python main.py
+
+      - name: Show summary
+        run: |
+          python - <<'EOF'
+          import json
+          d = json.load(open("opportunities.json", encoding="utf-8"))
+          r = d["resumen"]
+          print(f"Nuevas: {r['nuevas_en_esta_ejecucion']} | Histórico: {r['total_historicas']}")
+          for o in d["oportunidades"][:10]:
+              f = o["financiero"]
+              print(f"- [{o['referencia']}] {o['nombre']}: compra "
+                    f"{f['precio_compra']} €, ROI {f['roi_pct']} %, score {o['score_total']}")
+          EOF
+
+      - name: Upload data artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legosearch-data
+          path: |
+            opportunities.json
+            reports/
+          retention-days: 90
+
+      # --- Opcional: persistir el histórico en una rama dedicada ---
+      # - name: Commit history to runtime-data branch
+      #   run: |
+      #     git config user.name  "legosearch-bot"
+      #     git config user.email "legosearch-bot@users.noreply.github.com"
+      #     git checkout --orphan runtime-data
+      #     git add -f opportunities.json
+      #     git commit -m "chore: scan $(date -u +%FT%TZ)"
+      #     git push -f origin runtime-data
