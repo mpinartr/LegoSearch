@@ -1268,6 +1268,16 @@ def ejecutar(args: argparse.Namespace) -> int:
         log.error("La watchlist está vacía. Añade sets en config.py.")
         return 2
 
+    # Enriquecimiento opcional con precios reales de Brickset. Sin
+    # BRICKSET_API_KEY se omite y todo sigue igual que antes.
+    if not args.simulate and not getattr(args, "sin_brickset", False):
+        from brickset import BricksetClient
+        cliente_brickset = BricksetClient.desde_entorno()
+        if cliente_brickset.activo:
+            cliente_brickset.enriquecer_watchlist(watchlist)
+        else:
+            log.debug("BRICKSET_API_KEY no definida: se usan los precios de config.py")
+
     # --- 1 + 2: rastreo y extracción -----------------------------------
     if args.simulate:
         log.info("Modo simulación: sin acceso a red.")
@@ -1344,6 +1354,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
                         help="Muestra solo las N mejores oportunidades en la tabla.")
     parser.add_argument("--tabla", action="store_true",
                         help="Muestra el ranking del JSON existente y sale (sin red).")
+    parser.add_argument("--sin-brickset", action="store_true",
+                        help="No consulta la API de Brickset aunque haya API key.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Log detallado.")
     return parser.parse_args(argv)
 

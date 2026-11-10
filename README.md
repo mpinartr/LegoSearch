@@ -55,6 +55,7 @@ Opciones de CLI:
 | `--no-report` | No genera el reporte Markdown. |
 | `--top N` | Muestra solo las N mejores oportunidades en la tabla. |
 | `--tabla` | Imprime el ranking del JSON existente y sale (sin red). |
+| `--sin-brickset` | No consulta la API de Brickset aunque haya `BRICKSET_API_KEY`. |
 | `--verbose`, `-v` | Log detallado, incluyendo **por qué se descarta** cada candidato. |
 
 ## 3. Configuración (`config.py`)
@@ -277,6 +278,7 @@ el último paso, leer la rama `runtime-data` con el histórico completo.
 ```
 LegoSearch/
 ├── config.py                 # Finanzas, filtros, feeds y watchlist
+├── brickset.py               # Precios reales vía API de Brickset (opcional)
 ├── main.py                   # Motor completo (rastreo → filtro dual → export)
 ├── requirements.txt          # feedparser, requests
 ├── README.md
@@ -298,9 +300,31 @@ en `.gitignore`.
 - **Anti-ruido.** Un precio inferior al 10 % del PVP (probable cuota de sorteo o
   error de regex), o un precio "suelto" en un feed editorial sin más importes,
   se descarta.
-- **Reddit** limita peticiones seguidas desde una IP (HTTP 429). El motor espera
-  entre peticiones al mismo host y, si aún así falla, continúa sin ese feed.
+- **Reddit** limita a ~1 petición por minuto por IP (HTTP 429). Además, su
+  filtro detecta la huella TLS de `requests`, así que esos feeds se descargan
+  con `curl` (`RED["hosts_via_curl"]`). En GitHub Actions, con IPs compartidas,
+  Reddit puede fallar igualmente: el motor continúa sin ese feed.
 - **Sin notificaciones.** El diseño delega la alerta en el superagente externo.
+
+### Precios reales con Brickset (opcional)
+
+El punto débil del enfoque RSS es que los feeds publican noticias, no precios:
+de 165 entradas, solo ~5 traen un importe y casi siempre es el PVP de un
+lanzamiento. La [API de Brickset](https://brickset.com/tools/webservices/requestkey)
+cubre ese hueco con PVP oficial, precio de LEGO.com, de Amazon y **valor de
+mercado de BrickLink** (nuevo y usado) por set.
+
+```bash
+# 1. Key gratuita en brickset.com/tools/webservices/requestkey
+echo 'BRICKSET_API_KEY=tu_key' >> .env
+set -a && source .env && set +a
+
+python main.py --dry-run    # ahora usa precios de mercado reales
+```
+
+Sin key, todo funciona igual que antes: el enriquecimiento es opcional y el
+motor nunca falla por no tenerla. En GitHub Actions, añade
+`BRICKSET_API_KEY` (y opcionalmente `BRICKSET_USER_HASH`) como *secret*.
 
 ## 8. Licencia
 

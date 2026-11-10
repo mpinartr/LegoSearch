@@ -23,7 +23,9 @@ permissions:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 15 min: deja margen para la pausa de 62 s entre subreddits (~2 min) y
+    # las consultas a Brickset con la watchlist completa.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -37,6 +39,11 @@ jobs:
 
       - name: Run scan
         run: python main.py
+        env:
+          # Opcional: sin esta clave la app usa los precios de config.py.
+          # Añádela en Settings > Secrets and variables > Actions.
+          BRICKSET_API_KEY: ${{ secrets.BRICKSET_API_KEY }}
+          BRICKSET_USER_HASH: ${{ secrets.BRICKSET_USER_HASH }}
 
       - name: Show summary
         run: |
