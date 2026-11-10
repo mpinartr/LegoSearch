@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.0",
+  "app": {
+    "name": "LegoSearch",
+    "version": "1.0.0"
+  },
+  "generado_en": "2026-11-10T19:18:06+00:00",
+  "resumen": {
+    "sets_en_watchlist": 13,
+    "entradas_analizadas": 165,
+    "validas": 1,
+    "descartadas": 2,
+    "descartadas_detalle": [
+      {
+        "referencia": "10297",
+        "set": "Boutique Hotel (Modular)",
+        "motivo": "sin precio detectado ni señal de oferta",
+        "titular": "Best modular building: Quarter final bout 2",
+        "fuente": "Brickset News",
+        "url": "https://brickset.com/article/136039"
+      },
+      {
+        "referencia": "10297",
+        "set": "Boutique Hotel (Modular)",
+        "motivo": "sin precio detectado ni señal de oferta",
+        "titular": "Which is the best modular building?",
+        "fuente": "Brickset News",
+        "url": "https://brickset.com/article/135979"
+      }
+    ],
+    "duracion_segundos": 4.54,
+    "total_historicas": 1,
+    "nuevas_en_esta_ejecucion": 1,
+    "duplicadas_ignoradas": 0,
+    "temas": {
+      "Star Wars UCS": 1
+    }
+  },
+  "estado_feeds": [
+    {
+      "nombre": "Brickset News",
+      "ok": true,
+      "entradas": 40
+    },
+    {
+      "nombre": "Brick Fanatics",
+      "ok": true,
+      "entradas": 50
+    },
+    {
+      "nombre": "The Lego Car Blog",
+      "ok": true,
+      "entradas": 20
+    },
+    {
+      "nombre": "Reddit r/legodeals",
+      "ok": true,
+      "entradas": 25
+    },
+    {
+      "nombre": "Reddit r/lego",
+      "ok": false,
+      "entradas": 0
+    },
+    {
+      "nombre": "Chollometro (LEGO)",
+      "ok": true,
+      "entradas": 30
+    }
+  ],
+  "oportunidades": [
+    {
+      "id": "9d5925ce496fd4d4",
+      "schema_version": "1.0",
+      "referencia": "75192",
+      "nombre": "Millennium Falcon UCS",
+      "tematica": "Star Wars UCS",
+      "estado_eol": "Activo",
+      "score_total": 82.9,
+      "confianza_cruce": 100,
+      "criterios_coleccionista": {
+        "score": 3,
+        "max": 3,
+        "detalle": "AFOL + 7,541 piezas + minifiguras exclusivas",
+        "piezas": 7541,
+        "minifiguras_exclusivas": true,
+        "publico_adulto_afol": true
+      },
+      "precios": {
+        "oficial": 849.99,
+        "objetivo_compra": 600.0,
+        "estimado_reventa": 1150.0,
+        "detectado": null,
+        "detectado_texto": null,
+        "compra": 600.0,
+        "origen": "precio_objetivo_compra",
+        "descuento_vs_pvp_pct": 29.41,
+        "excede_objetivo": false
+      },
+      "financiero": {
+        "precio_compra": 600.0,
+        "gastos_plataforma": 115.0,
+        "gastos_envio": 57.5,
+        "coste_total": 772.5,
+        "ingresos_netos": 977.5,
+        "beneficio_neto": 377.5,
+        "roi_pct": 48.87
+      },
+      "fuente": {
+        "nombre": "Reddit r/legodeals",
+        "tipo": "ofertas",
+        "titulo": "Buy LEGO Star Wars Millennium Falcon Collector Series Set 75192 | LEGO | Argos",
+        "url": "https://www.reddit.com/r/legodeals/comments/1xs3n6t/buy_lego_star_wars_millennium_falcon_collector/",
+        "fecha": "2026-11-09T21:01:51+00:00",
+        "antiguedad_dias": 0.9
+      },
+      "detectada_en": "2026-11-10T19:18:10+00:00",
+      "notas_set": "El set más reconocible de Star Wars UCS; altísima liquidez en reventa."
+    }
+  ]
+}
