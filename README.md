@@ -53,6 +53,8 @@ Opciones de CLI:
 | `--only-feeds TEXTO…` | Escanea solo fuentes cuyo nombre/URL contenga el texto (`chollometro`, `reddit`…). |
 | `--max-entradas N` | Entradas máximas por feed (por defecto 50). |
 | `--no-report` | No genera el reporte Markdown. |
+| `--top N` | Muestra solo las N mejores oportunidades en la tabla. |
+| `--tabla` | Imprime el ranking del JSON existente y sale (sin red). |
 | `--verbose`, `-v` | Log detallado, incluyendo **por qué se descarta** cada candidato. |
 
 ## 3. Configuración (`config.py`)
@@ -60,12 +62,16 @@ Opciones de CLI:
 Todo el comportamiento se ajusta en un único fichero, sin tocar el motor:
 
 - **`FINANZAS`** — `gastos_plataforma_pct` (10 %), `gastos_envio_pct` (5 %),
-  `roi_minimo_pct` (40 %), `beneficio_neto_minimo_eur` (15 €).
+  `roi_minimo_pct` (25 %), `beneficio_neto_minimo_eur` (10 €).
 - **`FILTROS`** — criterios de coleccionista (`piezas_alto_volumen`,
   `score_minimo_coleccionista`), vigencia de la oferta
   (`dias_max_antiguedad_oferta` = 45, `dias_max_antiguedad_news` = 365),
   anti-ruido (`precio_minimo_pct_pvp`) y umbrales de scoring
   (`score_total_minimo`, `confianza_minima_cruce`).
+
+> Los umbrales están deliberadamente **bajos**: el score sirve para *ordenar*
+> la tabla, no para esconder resultados. El filtro que de verdad protege la
+> calidad es el contexto LEGO + los umbrales financieros.
 - **`FEEDS`** — fuentes RSS. Cada entrada tiene `tipo` (`ofertas`, `eol`,
   `noticias`) y `valor_eur` (fiabilidad 0–1, pondera el score).
 - **`WATCHLIST`** — base de datos local de sets (ver abajo).
@@ -196,8 +202,17 @@ Ejemplo completo: [`examples/opportunities.example.json`](examples/opportunities
         "coste_total": 772.5,
         "ingresos_netos": 977.5,
         "beneficio_neto": 377.5,
-        "roi_pct": 48.87
+        "roi_pct": 48.87,
+        "margen_mensual_pct": 2.71
       },
+      "plan_reventa": {
+        "precio_venta_sugerido": 1092.5,
+        "plazo_reventa_meses": 18,
+        "tipo_operacion": "tenencia",
+        "horizonte": "~18 mes(es) — mantiene valor y captura la subida del EoL"
+      },
+      "tipo": "chollo",
+      "ranking": 1,
       "fuente": {
         "nombre": "Reddit r/legodeals",
         "tipo": "ofertas",

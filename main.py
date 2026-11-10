@@ -229,6 +229,10 @@ _OFERTA_VIVA_RE = re.compile(
     re.IGNORECASE,
 )
 
+# La entrada debe hablar de LEGO, no solo mencionar una marca cuyo nombre
+# coincide con un set (p. ej. "Nintendo Switch" vs. set 71374 NES).
+_CONTEXTO_LEGO_RE = re.compile(r"\blego\b|\bbrick|\bminifig|\blego group", re.IGNORECASE)
+
 # --- Formatos numéricos ----------------------------------------------------
 
 
@@ -693,6 +697,12 @@ def evaluar_oportunidades(entradas: list[Entry],
         })
 
     for entry in entradas:
+        # Un chollo de "Nintendo Switch" no es un set LEGO 71374, aunque el
+        # alias del set contenga la marca. Sin contexto LEGO explícito, la
+        # coincidencia vendrá de otro producto con nombre parecido.
+        if not _CONTEXTO_LEGO_RE.search(entry.texto):
+            continue
+
         refs = detectar_referencias_meta(entry, watchlist)
         if not refs:
             continue
@@ -828,15 +838,58 @@ def normalize_url(url: str) -> str:
     return url.split("?")[0].split("#")[0].rstrip("/").lower()
 
 
-def serializar_candidate(c: Candidate) -> dict:
+# Plazo medio estimado de reventa, en meses, según el estado del set.
+# Los sets ya retirados rotan antes (la oferta en segunda mano es escasa);
+# los activos requieren esperar a la retirada para capturar la revalorización.
+PLAZO_REVENTA_MESES = {
+    "Retirado": 1,
+    "EoL": 1,
+    "Próximo EoL": 6,
+    "Activo": 18,
+}
+
+
+def estimar_reventa(set_: dict) -> dict:
+    """Escenario de venta: cuándo y a qué precio conviene revender.
+
+    Devuelve un plan explícito para que quien consuma el JSON sepa si la
+    oportunidad es de giro rápido (semanas) o de tenencia (meses).
+
+    ``precio_venta_sugerido``: el valor estimado de reventa, con un pequeño
+    descuento (5 %) para reflejar que en la práctica no se vende al máximo
+    teórico del mercado.
+    """
+    valor = float(set_["precio_estimado_reventa"])
+    plazo = int(PLAZO_REVENTA_MESES.get(set_["estado_eol"], 12))
+    sugerido = round(valor * 0.95, 2)
+    return {
+        "precio_venta_sugerido": sugerido,
+        "plazo_reventa_meses": plazo,
+        "tipo_operacion": "giro_rápido" if plazo <= 3 else "tenencia",
+        "horizonte": (
+            f"~{plazo} mes(es) — reventa tras la retirada, mercado escaso"
+            if plazo <= 3
+            else f"~{plazo} mes(es) — mantiene valor y captura la subida del EoL"
+        ),
+    }
+
+
+def serializar_candidate(c: Candidate, ranking: int | None = None) -> dict:
     """Convierte una ``Candidate`` en el dict que consumirá el superagente."""
     op = asdict(c.financiero)
     descuento_pct = round(
         (1 - c.precio_compra / c.set["precio_oficial"]) * 100.0, 2
     )
+    reventa = estimar_reventa(c.set)
+    # Margen por mes: útil para comparar un giro rápido de 40 % con una
+    # tenencia de 18 meses al 80 %.
+    margen_mensual = round(op["roi_pct"] / max(reventa["plazo_reventa_meses"], 1), 2)
+
     return {
         "id": referencia_huella(c),
         "schema_version": SCHEMA_VERSION,
+        "ranking": ranking,
+        "tipo": "chollo" if c.origen_precio == "oferta_detectada" else "señal_vigilancia",
         "referencia": c.referencia,
         "nombre": c.set["nombre"],
         "tematica": c.set["tematica"],
@@ -862,7 +915,8 @@ def serializar_candidate(c: Candidate) -> dict:
             "descuento_vs_pvp_pct": descuento_pct,
             "excede_objetivo": bool(c.precio_compra > c.set["precio_objetivo_compra"]),
         },
-        "financiero": op,
+        "financiero": {**op, "margen_mensual_pct": margen_mensual},
+        "plan_reventa": reventa,
         "fuente": {
             "nombre": c.entry.feed,
             "tipo": c.entry.tipo,
@@ -921,6 +975,22 @@ def actualizar_historico(existente: dict, nuevas: list[dict],
     # Histórico completo (más antiguas primero, ya que al final se ordena
     # por fecha en el JSON de salida para lectura humana).
     historico = previas + nuevas_unicas
+
+    # Migración: entradas guardadas antes de existir "plan_reventa"/"tipo"
+    # no deben romper la tabla ni dejar el JSON con esquema mixto.
+    for op in historico:
+        if "plan_reventa" not in op:
+            set_ = {"precio_estimado_reventa": (op.get("precios") or {}).get("estimado_reventa", 0),
+                    "estado_eol": op.get("estado_eol", "Activo")}
+            op["plan_reventa"] = estimar_reventa(set_)
+        if "tipo" not in op:
+            origen = (op.get("precios") or {}).get("origen", "")
+            op["tipo"] = "chollo" if origen == "oferta_detectada" else "señal_vigilancia"
+        if "margen_mensual_pct" not in op.get("financiero", {}):
+            fin = op.setdefault("financiero", {})
+            fin["margen_mensual_pct"] = round(
+                fin.get("roi_pct", 0) / max(op["plan_reventa"]["plazo_reventa_meses"], 1), 2)
+
     histograma_temas: dict[str, int] = {}
     for op in historico:
         tema = op.get("tematica", "?")
@@ -938,13 +1008,26 @@ def actualizar_historico(existente: dict, nuevas: list[dict],
             "temas": dict(sorted(histograma_temas.items(), key=lambda kv: -kv[1])),
         },
         "estado_feeds": estado_feeds,
-        # Todas las oportunidades válidas, las más recientes primero.
-        "oportunidades": sorted(
-            historico,
-            key=lambda o: (o.get("detectada_en") or "", o.get("score_total") or 0),
-            reverse=True,
-        ),
+        # Ranking global: lo más interesante primero (es lo que consume el bot).
+        # Se reasigna el número para que el orden del array y "ranking" casen.
+        "oportunidades": _ordenar_y_ranquear(historico),
     }, {op["id"] for op in nuevas_unicas}
+
+
+def _ordenar_y_ranquear(oportunidades: list[dict]) -> list[dict]:
+    """Ordena por interés real y renumera ``ranking``.
+
+    El interés combina score y margen por mes: dos oportunidades con el mismo
+    score no valen lo mismo si una tarda 18 meses y otra 1 en rotar.
+    """
+    def clave(o: dict) -> float:
+        fin = o.get("financiero") or {}
+        return float(o.get("score_total") or 0) + float(fin.get("margen_mensual_pct") or 0) * 0.5
+
+    ordenadas = sorted(oportunidades, key=clave, reverse=True)
+    for i, op in enumerate(ordenadas, start=1):
+        op["ranking"] = i
+    return ordenadas
 
 
 def escribir_json_atomico(ruta: Path, datos: dict) -> None:
@@ -964,6 +1047,59 @@ def escribir_json_atomico(ruta: Path, datos: dict) -> None:
         raise
 
 
+def tabla_oportunidades(oportunidades: list[dict]) -> str:
+    """Tabla Markdown ordenada de más a menos interesante.
+
+    Columnas pensadas para decidir rápido si merece la pena comprar:
+    ranking, set, compra, reventa con plazo, beneficio, ROI y margen mensual.
+    """
+    cabecera = (
+        "| # | Tipo | Set | Temática | EoL | Compra | Venta (~plazo) | Beneficio | ROI | %/mes | Score |\n"
+        "|---|------|-----|----------|-----|--------|----------------|-----------|-----|-------|-------|"
+    )
+    filas = [cabecera]
+    for o in oportunidades:
+        f, p = o["financiero"], o["precios"]
+        pl = o.get("plan_reventa") or {}
+        venta = pl.get("precio_venta_sugerido", p["estimado_reventa"])
+        plazo = pl.get("plazo_reventa_meses", "?")
+        tipo = "🟢 chollo" if o.get("tipo") == "chollo" else "👁️ vigilancia"
+        filas.append(
+            f"| {o.get('ranking') or '-'} "
+            f"| {tipo} "
+            f"| **{o['referencia']}** {o['nombre'][:30]} "
+            f"| {o['tematica'][:16]} "
+            f"| {o['estado_eol']} "
+            f"| {p['compra']:.2f} € "
+            f"| {venta:.2f} € (~{plazo}m) "
+            f"| **{f['beneficio_neto']:.2f} €** "
+            f"| **{f['roi_pct']:.1f} %** "
+            f"| {f.get('margen_mensual_pct', 0):.1f} % "
+            f"| {o['score_total']:.0f} |"
+        )
+    return "\n".join(filas)
+
+
+def imprimir_tabla(oportunidades: list[dict]) -> None:
+    """Versión consola de la tabla (sin Markdown, legible en terminal)."""
+    if not oportunidades:
+        print("  (sin oportunidades)")
+        return
+    print(f"  {'#':>2} {'TIPO':<6} {'REF':<7} {'COMPRA':>9} {'VENTA':>9} {'BENEF':>9} {'ROI':>7} {'%/m':>6} {'SCORE':>5}  SET")
+    for o in oportunidades:
+        f, p = o["financiero"], o["precios"]
+        pl = o.get("plan_reventa") or {}
+        venta = pl.get("precio_venta_sugerido", p["estimado_reventa"])
+        tipo = "CHL" if o.get("tipo") == "chollo" else "VIG"
+        print(
+            f"  {o.get('ranking') or '-':>2} {tipo:<6} {o['referencia']:<7} "
+            f"{p['compra']:>8.2f}€ {venta:>8.2f}€ "
+            f"{f['beneficio_neto']:>8.2f}€ {f['roi_pct']:>6.1f}% "
+            f"{f.get('margen_mensual_pct', 0):>5.1f}% {o['score_total']:>5.0f}  "
+            f"{o['nombre'][:34]}"
+        )
+
+
 def escribir_reporte_md(ruta: Path, datos: dict, nuevas: list[dict]) -> None:
     """Reporte legible para lectores humanos (no lo usa el agente).
 
@@ -973,6 +1109,7 @@ def escribir_reporte_md(ruta: Path, datos: dict, nuevas: list[dict]) -> None:
     """
     ruta.parent.mkdir(parents=True, exist_ok=True)
     r = datos["resumen"]
+    todas = datos["oportunidades"]
     lineas = [
         f"# LegoSearch — Reporte {datos['generado_en']}",
         "",
@@ -981,12 +1118,23 @@ def escribir_reporte_md(ruta: Path, datos: dict, nuevas: list[dict]) -> None:
         f"- Duplicadas ignoradas: {r.get('duplicadas_ignoradas', 0)}",
         f"- Descartadas por filtros: {r.get('descartadas', 0)}",
         f"- Feeds OK: {sum(1 for f in datos['estado_feeds'] if f['ok'])}/{len(datos['estado_feeds'])}",
+        f"- Sets vigilados: {r.get('sets_en_watchlist', 0)}",
         "",
-        "## Oportunidades nuevas",
+        "## Ranking completo (más a menos interesante)",
         "",
     ]
-    if not nuevas:
-        lineas.append("_Sin oportunidades nuevas en esta ejecución._")
+    lineas.append(tabla_oportunidades(todas) if todas else "_Sin oportunidades._")
+    lineas += [
+        "",
+        "**Tipos:** 🟢 *chollo* = precio real encontrado en una fuente · "
+        "👁️ *vigilancia* = set interesante sin oferta activa (precio = objetivo de compra).",
+        "",
+        "**%/mes:** ROI repartido entre los meses de tenencia estimados. "
+        "Sirve para comparar un giro rápido con una tenencia larga.",
+        "",
+    ]
+    if nuevas:
+        lineas += ["## Detalle de las nuevas", ""]
     for o in nuevas:
         f = o["financiero"]
         lineas += [
@@ -1026,7 +1174,7 @@ def entradas_simuladas() -> list[Entry]:
         {
             "feed": "Reddit r/legodeals", "tipo": "ofertas", "valor_eur": 1.0,
             "titulo": "[Deal] Hogwarts Castle 71043 at €289.90 (was €469.99)",
-            "texto": "deal hogwarts castle 71043 at €289.90 was €469.99. worth grabbing?",
+            "texto": "deal lego hogwarts castle 71043 at €289.90 was €469.99. worth grabbing?",
             "url": "https://example.com/deal-hogwarts", "dias": 3,
         },
         {
@@ -1063,6 +1211,20 @@ def ejecutar(args: argparse.Namespace) -> int:
     """Orquesta el flujo completo. Devuelve el código de salida."""
     inicio = time.time()
     marca_tiempo = ahora_iso()
+
+    # Modo lectura: mostrar el ranking ya publicado, sin rastrear nada.
+    if getattr(args, "tabla", False):
+        ruta = Path(args.output) if args.output else Path(cfg.OUTPUT_FILE)
+        datos = cargar_historico(ruta)
+        if not datos:
+            log.error("No hay %s. Ejecuta antes sin --tabla.", ruta.name)
+            return 2
+        opps = datos.get("oportunidades", [])
+        if args.top:
+            opps = opps[: args.top]
+        print(tabla_oportunidades(opps))
+        return 0
+
     log.info("LegoSearch v%s (schema %s)", APP_VERSION, SCHEMA_VERSION)
 
     watchlist = cargar_watchlist()
@@ -1089,7 +1251,9 @@ def ejecutar(args: argparse.Namespace) -> int:
         for d in descartadas:
             log.debug("  ✗ [%s] %s — %s", d["referencia"], d["set"][:28], d["motivo"])
 
-    nuevas = [serializar_candidate(c) for c in validas]
+    # ``validas`` ya viene ordenada por score descendente: el índice es el
+    # ranking que verá el consumidor (1 = más interesante).
+    nuevas = [serializar_candidate(c, ranking=i) for i, c in enumerate(validas, start=1)]
     resumen = {
         "sets_en_watchlist": len(watchlist),
         "entradas_analizadas": len(entradas),
@@ -1102,10 +1266,7 @@ def ejecutar(args: argparse.Namespace) -> int:
     # --- 5: exportación -----------------------------------------------
     if args.dry_run:
         log.info("--dry-run: %d oportunidades encontradas, no se escribe nada.", len(nuevas))
-        for n in nuevas:
-            log.info("  %s %s · compra %.2f € · ROI %.1f %% · score %.1f",
-                     n["referencia"], n["nombre"], n["precios"]["compra"],
-                     n["financiero"]["roi_pct"], n["score_total"])
+        imprimir_tabla(nuevas[: args.top] if args.top else nuevas)
         return 0
 
     salida = Path(args.output) if args.output else Path(cfg.OUTPUT_FILE)
@@ -1116,6 +1277,8 @@ def ejecutar(args: argparse.Namespace) -> int:
     log.info("Exportado: %s (%d nuevas, %d totales)", salida,
              datos["resumen"]["nuevas_en_esta_ejecucion"],
              datos["resumen"]["total_historicas"])
+    log.info("Ranking (todo el histórico, más a menos interesante):")
+    imprimir_tabla(datos["oportunidades"][: args.top] if args.top else datos["oportunidades"])
 
     if not args.no_report:
         ruta_md = Path(cfg.BASE_DIR) / "reports" / f"reporte_{date.today().isoformat()}.md"
@@ -1141,6 +1304,10 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
                         help="Filtra fuentes cuyo nombre/URL contenga alguno de estos textos.")
     parser.add_argument("--max-entradas", type=int, default=None,
                         help="Entradas máximas por feed.")
+    parser.add_argument("--top", type=int, default=None, metavar="N",
+                        help="Muestra solo las N mejores oportunidades en la tabla.")
+    parser.add_argument("--tabla", action="store_true",
+                        help="Muestra el ranking del JSON existente y sale (sin red).")
     parser.add_argument("--verbose", "-v", action="store_true", help="Log detallado.")
     return parser.parse_args(argv)
 

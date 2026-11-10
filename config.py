@@ -50,10 +50,11 @@ FINANZAS = {
     # valor fijo en euros (p. ej. 4.95) si vendes siempre con el mismo carrier.
     "gastos_envio_pct": 5.0,
 
-    # Umbrales de calidad financiera: una oportunidad solo se exporta si
-    # supera TODOS los umbrales aplicables.
-    "roi_minimo_pct": 40.0,            # ROI neto mínimo aceptable
-    "beneficio_neto_minimo_eur": 15.0,  # evita "ROIs altos" sobre sets baratos
+    # Umbrales de calidad financiera.
+    # Ajustados para "ver más chollos": el objetivo es detectar y priorizar,
+    # no descartar. El score_total ordena y el usuario decide.
+    "roi_minimo_pct": 25.0,             # antes 40 %: filtraba oportunidades válidas
+    "beneficio_neto_minimo_eur": 10.0,  # antes 15 €: permite sets pequeños rentables
 
     # Tope de comisión total para evitar configuraciones inviables.
     "comision_total_max_pct": 60.0,
@@ -70,9 +71,8 @@ FILTROS = {
     "estados_retirada": ["EoL", "Retirado", "Próximo EoL"],
 
     # --- Criterios de coleccionista -------------------------------------
-    # Un set se considera apto si cumple AL MENOS UNO de estos criterios:
     "piezas_alto_volumen": 1_000,   # piezas >= este valor => volumen alto
-    "score_minimo_coleccionista": 2,  # 0-3 puntos (piezas, exclusivas, AFOL)
+    "score_minimo_coleccionista": 1,  # antes 2: un único criterio ya es suficiente
 
     # --- Vigencia de la oferta ------------------------------------------
     # Si la noticia es más antigua que esto, el precio detectado probablemente
@@ -87,8 +87,10 @@ FILTROS = {
     # pieza o un artículo satírico. Se descarta.
     "precio_minimo_pct_pvp": 10.0,
 
-    # --- Umbrales de scoring final --------------------------------------
-    "score_total_minimo": 55.0,       # 0-100: combo colección + calidad oferta
+    # Umbrales de scoring final.
+    # Bajos a propósito: el score sirve para ORDENAR la tabla, no para ocultar
+    # resultados. Los umbrales financieros de FINANZAS siguen filtrando.
+    "score_total_minimo": 30.0,       # antes 55: ocultaba chollos válidos
     "confianza_minima_cruce": 25,     # 0-100: confianza de que la noticia hable del set
 }
 
@@ -137,11 +139,12 @@ FEEDS = [
         # La URL histórica "https://www.chollometro.com/rss/search?q=lego"
         # devuelve 404 desde 2025; Pepper la sustituyó por "rssx/keyword-alarm".
         # El keyword-alarm público exige un token de la web, por lo que usamos
-        # su feed "hot": incluye LEGO con frecuencia y el motor descarta el resto.
-        # Si tienes el token de tu alerta, cámbialo por:
+        # el feed de novedades: comprobado que trae más LEGO que "rss/hot"
+        # (que en las pruebas tenía 0 menciones) y precios estructurados en el
+        # atributo pepper:merchant. Si tienes el token de tu alerta, cámbialo a:
         #   https://www.chollometro.com/rssx/keyword-alarm/lego
         "nombre": "Chollometro (LEGO)",
-        "url": "https://www.chollometro.com/rss/hot",
+        "url": "https://www.chollometro.com/rss/nuevos",
         "tipo": "ofertas",
         "valor_eur": 1.0,
     },
@@ -208,7 +211,7 @@ WATCHLIST: dict[str, dict] = {
         "piezas": 9036,
         "minifiguras_exclusivas": False,
         "publico_adulto_afol": True,
-        "alias": ["Colosseum", "Colosseum Rome", "Coliseo de Roma"],
+        "alias": ["Colosseum", "Colosseum Rome", "Coliseo de Roma", "Coliseum"],
         "notas": "Más de 9.000 piezas: el récord de piezas durante años.",
     },
     "10307": {
@@ -340,6 +343,202 @@ WATCHLIST: dict[str, dict] = {
         "publico_adulto_afol": True,
         "alias": ["Bugatti Chiron"],
         "notas": "El primer Technic Ultimate; revalorización sostenida.",
+    },
+    # --- Ampliación: clásicos EoL con reventa consolidada -------------------
+    "75257": {
+        "nombre": "Millennium Falcon (episodio IX)",
+        "tematica": "Star Wars",
+        "precio_oficial": 179.99,
+        "precio_objetivo_compra": 125.00,
+        "precio_estimado_reventa": 290.00,
+        "estado_eol": "Retirado",
+        "piezas": 1353,
+        "minifiguras_exclusivas": False,
+        "publico_adulto_afol": False,
+        "alias": ["Falcon IX", "Halcón Milenario IX", "Falcon episodio 9"],
+        "notas": "Versión asequible del Falcon: entra al EoL fácil y sube con rapidez.",
+    },
+    "75309": {
+        "nombre": "Republic Gunship UCS",
+        "tematica": "Star Wars UCS",
+        "precio_oficial": 349.99,
+        "precio_objetivo_compra": 250.00,
+        "precio_estimado_reventa": 620.00,
+        "estado_eol": "Retirado",
+        "piezas": 3292,
+        "minifiguras_exclusivas": True,
+        "publico_adulto_afol": True,
+        "alias": ["Republic Gunship", "UCS Gunship"],
+        "notas": "UCS con enorme demanda por fans de Clone Wars.",
+    },
+    "10188": {
+        "nombre": "Death Star",
+        "tematica": "Star Wars",
+        "precio_oficial": 399.99,
+        "precio_objetivo_compra": 520.00,
+        "precio_estimado_reventa": 1100.00,
+        "estado_eol": "Retirado",
+        "piezas": 3803,
+        "minifiguras_exclusivas": True,
+        "publico_adulto_afol": True,
+        "alias": ["Death Star", "Estrella de la Muerte"],
+        "notas": "Clásico ya retirado: solo se compra en segunda mano, reventa muy alta.",
+    },
+    "10255": {
+        "nombre": "Assembly Square (Modular)",
+        "tematica": "Modular Buildings",
+        "precio_oficial": 259.99,
+        "precio_objetivo_compra": 190.00,
+        "precio_estimado_reventa": 470.00,
+        "estado_eol": "Retirado",
+        "piezas": 4002,
+        "minifiguras_exclusivas": False,
+        "publico_adulto_afol": True,
+        "alias": ["Assembly Square", "Plaza del ensamblaje"],
+        "notas": "Modular de aniversario; entre los más buscados de la línea.",
+    },
+    "10260": {
+        "nombre": "Downtown Diner (Modular)",
+        "tematica": "Modular Buildings",
+        "precio_oficial": 149.99,
+        "precio_objetivo_compra": 210.00,
+        "precio_estimado_reventa": 430.00,
+        "estado_eol": "Retirado",
+        "piezas": 2480,
+        "minifiguras_exclusivas": False,
+        "publico_adulto_afol": True,
+        "alias": ["Downtown Diner", "Restaurante modular"],
+        "notas": "Ya solo en segunda mano: referencia obligada de los modulares.",
+    },
+    "21319": {
+        "nombre": "Central Perk (Friends)",
+        "tematica": "Ideas / TV",
+        "precio_oficial": 69.99,
+        "precio_objetivo_compra": 55.00,
+        "precio_estimado_reventa": 150.00,
+        "estado_eol": "Retirado",
+        "piezas": 1070,
+        "minifiguras_exclusivas": True,
+        "publico_adulto_afol": False,
+        "alias": ["Central Perk", "Friends Central Perk"],
+        "notas": "Set de nicho con seguidores fieles; ROI alto por precio de entrada bajo.",
+    },
+    "42100": {
+        "nombre": "Liebherr R 9800 (Technic)",
+        "tematica": "Technic",
+        "precio_oficial": 449.99,
+        "precio_objetivo_compra": 320.00,
+        "precio_estimado_reventa": 700.00,
+        "estado_eol": "Retirado",
+        "piezas": 4108,
+        "minifiguras_exclusivas": False,
+        "publico_adulto_afol": True,
+        "alias": ["Liebherr", "Excavadora Technic"],
+        "notas": "Technic de gran escala con motorización: nicho muy cotizado.",
+    },
+    "43179": {
+        "nombre": "Mickey Mouse & Minnie Mouse",
+        "tematica": "Disney",
+        "precio_oficial": 179.99,
+        "precio_objetivo_compra": 120.00,
+        "precio_estimado_reventa": 330.00,
+        "estado_eol": "Retirado",
+        "piezas": 1739,
+        "minifiguras_exclusivas": False,
+        "publico_adulto_afol": True,
+        "alias": ["Mickey Mouse", "Minnie Mouse"],
+        "notas": "Coleccionables Disney: demanda cruzada de no-AFOL.",
+    },
+    "71374": {
+        "nombre": "Nintendo Entertainment System",
+        "tematica": "Ideas / Gaming",
+        "precio_oficial": 229.99,
+        "precio_objetivo_compra": 165.00,
+        "precio_estimado_reventa": 420.00,
+        "estado_eol": "Retirado",
+        "piezas": 2646,
+        "minifiguras_exclusivas": False,
+        "publico_adulto_afol": True,
+        "alias": ["Nintendo Entertainment System", "NES", "Nintendo"],
+        "notas": "Retro-gaming: alta demanda de nostálgicos, no solo AFOL.",
+    },
+    "21322": {
+        "nombre": "Barracuda Bay (Piratas)",
+        "tematica": "Ideas / Piratas",
+        "precio_oficial": 199.99,
+        "precio_objetivo_compra": 150.00,
+        "precio_estimado_reventa": 380.00,
+        "estado_eol": "Retirado",
+        "piezas": 2545,
+        "minifiguras_exclusivas": True,
+        "publico_adulto_afol": True,
+        "alias": ["Barracuda Bay", "Bahía Barracuda", "Pirate Ship"],
+        "notas": "Piratas: nicho con revalorización fuerte tras el EoL.",
+    },
+    "10300": {
+        "nombre": "Delorean Back to the Future",
+        "tematica": "Icons / Cine",
+        "precio_oficial": 169.99,
+        "precio_objetivo_compra": 125.00,
+        "precio_estimado_reventa": 340.00,
+        "estado_eol": "Retirado",
+        "piezas": 1872,
+        "minifiguras_exclusivas": False,
+        "publico_adulto_afol": True,
+        "alias": ["Delorean", "Back to the Future", "Regreso al futuro"],
+        "notas": "Licencia de cine con tirón intergeneracional.",
+    },
+    "10306": {
+        "nombre": "Atari 2600",
+        "tematica": "Icons / Gaming",
+        "precio_oficial": 239.99,
+        "precio_objetivo_compra": 170.00,
+        "precio_estimado_reventa": 400.00,
+        "estado_eol": "Retirado",
+        "piezas": 2532,
+        "minifiguras_exclusivas": False,
+        "publico_adulto_afol": True,
+        "alias": ["Atari 2600", "Atari"],
+        "notas": "Retro-gaming, misma demanda que la NES.",
+    },
+    "10295": {
+        "nombre": "Porsche 911",
+        "tematica": "Icons / Coches",
+        "precio_oficial": 149.99,
+        "precio_objetivo_compra": 110.00,
+        "precio_estimado_reventa": 310.00,
+        "estado_eol": "Retirado",
+        "piezas": 1458,
+        "minifiguras_exclusivas": False,
+        "publico_adulto_afol": True,
+        "alias": ["Porsche 911", "Porsche"],
+        "notas": "Coches clásicos: conversión rápida en marketplaces.",
+    },
+    "10271": {
+        "nombre": "Fiat 500",
+        "tematica": "Icons / Coches",
+        "precio_oficial": 89.99,
+        "precio_objetivo_compra": 65.00,
+        "precio_estimado_reventa": 190.00,
+        "estado_eol": "Retirado",
+        "piezas": 960,
+        "minifiguras_exclusivas": False,
+        "publico_adulto_afol": True,
+        "alias": ["Fiat 500", "Fiat"],
+        "notas": "Entrada barata, ROI porcentual alto.",
+    },
+    "10274": {
+        "nombre": "Ecto-1 (Cazafantasmas)",
+        "tematica": "Icons / Cine",
+        "precio_oficial": 199.99,
+        "precio_objetivo_compra": 145.00,
+        "precio_estimado_reventa": 390.00,
+        "estado_eol": "Retirado",
+        "piezas": 2352,
+        "minifiguras_exclusivas": False,
+        "publico_adulto_afol": True,
+        "alias": ["Ecto-1", "Ecto 1", "Ghostbusters", "Cazafantasmas"],
+        "notas": "Licencia ochentera con base de fans leal.",
     },
 }
 
