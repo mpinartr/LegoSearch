@@ -60,12 +60,18 @@ jobs:
             reports/
           retention-days: 90
 
-      # --- Opcional: persistir el histórico en una rama dedicada ---
-      # - name: Commit history to runtime-data branch
-      #   run: |
-      #     git config user.name  "legosearch-bot"
-      #     git config user.email "legosearch-bot@users.noreply.github.com"
-      #     git checkout --orphan runtime-data
-      #     git add -f opportunities.json
-      #     git commit -m "chore: scan $(date -u +%FT%TZ)"
-      #     git push -f origin runtime-data
+      - name: Commit history to runtime-data branch
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # Si la rama ya existe, partimos de ella para acumular histórico.
+          if git fetch origin runtime-data; then
+            git checkout -f -B runtime-data origin/runtime-data
+          else
+            echo "runtime-data aun no existe: primera ejecución"
+            git checkout --orphan runtime-data
+            git rm -rf --cached .
+          fi
+          git add -f opportunities.json
+          git commit -m "chore: scan $(date -u +%FT%TZ)" || echo "No changes to commit"
+          git push origin runtime-data
