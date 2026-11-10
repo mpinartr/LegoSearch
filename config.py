@@ -549,15 +549,24 @@ RED = {
     "timeout_segundos": 15,
     # Reintentos internos de feedparser (no cuentan el primer intento).
     "reintentos_feedparser": 1,
+    # Reddit devuelve HTTP 429 a User-Agents que se identifican como bots
+    # ("LegoSearch/1.0..."). Verificado: con UA de navegador la misma URL
+    # responde 200; con UA de bot, 429. No es bloqueo de IP.
     "user_agent": (
-        "LegoSearch/1.0 (monitor de oportunidades LEGO; contacto: "
-        "cambia-este-email@example.com)"
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     ),
     # Entradas máximas por feed (evita feeds infinitos de Reddit).
     # Se descartan antes las entradas más antiguas que FILTROS["dias_max_antiguedad_news"].
     "max_entradas_por_feed": 50,
-    # Pausa mínima (s) entre peticiones al mismo host. Reddit devuelve 429 si
-    # recibe varias peticiones seguidas desde la misma IP en poco tiempo.
-    "pausa_entre_peticiones_s": 2.0,
+    # Pausa mínima (s) entre peticiones al mismo host. Aunque el 429 era por
+    # el User-Agent, Reddit limita ráfagas por IP: mantenemos una pausa cortés.
+    # Pausa mínima (s) entre peticiones al mismo host. Reddit permite ~1
+    # petición por minuto por IP: comprobado que la 2ª a los 3 s da 429.
+    "pausa_entre_peticiones_s": 62.0,
     "hosts_con_pausa": ["reddit.com"],
+    # Hosts que se descargan con curl en lugar de requests.
+    # Reddit bloquea (429) la huella TLS de requests aunque se envíe un
+    # User-Agent de navegador; curl sí obtiene HTTP 200.
+    "hosts_via_curl": ["reddit.com"],
 }

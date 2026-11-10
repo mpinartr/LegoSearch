@@ -35,10 +35,12 @@ import json
 import logging
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import time
 import unicodedata
+from urllib.parse import urlparse
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -478,21 +480,55 @@ def crear_sesion() -> requests.Session:
     return sesion
 
 
+def _descargar_bytes(sesion: requests.Session, url: str) -> bytes | None:
+    """Obtiene el cuerpo del feed usando el transporte adecuado al host.
+
+    Devuelve None si el host bloquea la petición (403/429). Se registra el
+    motivo para que ``--verbose`` explique por qué falta una fuente.
+    """
+    host = urlparse(url).hostname or ""
+    via_curl = any(h in host for h in cfg.RED.get("hosts_via_curl", []))
+
+    if via_curl:
+        # Reddit: requests recibe 429 por su huella TLS; curl pasa.
+        proc = subprocess.run(
+            ["curl", "-sS", "--max-time", str(cfg.RED["timeout_segundos"]),
+             "-A", cfg.RED["user_agent"],
+             "-H", "Accept: application/rss+xml, application/xml, text/xml, */*",
+             "-w", "\n%{http_code}", url],
+            capture_output=True, timeout=cfg.RED["timeout_segundos"] + 5,
+        )
+        if proc.returncode != 0:
+            raise requests.ConnectionError(proc.stderr.decode(errors="replace")[:120])
+        cuerpo, _, codigo = proc.stdout.rpartition(b"\n")
+        codigo_txt = codigo.decode().strip()
+        if codigo_txt in ("403", "429"):
+            log.warning("  ↳ HTTP %s (bloqueo/limitación) en %s", codigo_txt, url)
+            return None
+        return cuerpo
+
+    respuesta = sesion.get(url, timeout=cfg.RED["timeout_segundos"])
+    if respuesta.status_code in (403, 429):
+        log.warning("  ↳ HTTP %s (bloqueo/limitación) en %s", respuesta.status_code, url)
+        return None
+    respuesta.raise_for_status()
+    return respuesta.content
+
+
 def descargar_feed(sesion: requests.Session, url: str) -> feedparser.FeedParserDict | None:
     """Descarga y parsea un feed. Devuelve None (sin excepción) si falla.
 
-    feedparser detecta el ``bozo`` (XML mal formado) pero suele devolver
-    entradas utilizables, así que solo descartamos si no hay ninguna.
+    Reddit filtra por la huella TLS del cliente, no por cabeceras: ``requests``
+    recibe 429 aunque envíe el User-Agent de un navegador. Para los hosts en
+    ``RED["hosts_via_curl"]`` se usa ``curl`` como transporte, que sí pasa.
     """
     intentos = int(cfg.RED["reintentos_feedparser"]) + 1
     for intento in range(1, intentos + 1):
         try:
-            respuesta = sesion.get(url, timeout=cfg.RED["timeout_segundos"])
-            if respuesta.status_code in (403, 429):
-                log.warning("  ↳ HTTP %s (bloqueo/limitación) en %s", respuesta.status_code, url)
+            contenido = _descargar_bytes(sesion, url)
+            if contenido is None:
                 return None
-            respuesta.raise_for_status()
-            feed = feedparser.parse(respuesta.content)
+            feed = feedparser.parse(contenido)
         except requests.RequestException as exc:
             log.warning("  ↳ intento %d/%d fallido (%s)", intento, intentos, type(exc).__name__)
             if intento < intentos:
