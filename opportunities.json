@@ -115,7 +115,28 @@
     }
   ],
   "suelos_historicos": {},
-  "oportunidades": [],
+  "oportunidades": [
+    {
+      "id": "seed-test-10188",
+      "referencia": "10188",
+      "nombre": "Death Star",
+      "score_total": 50,
+      "detectada_en": "2026-11-10T00:00:00+00:00",
+      "precios": {
+        "origen": "oferta_detectada",
+        "compra": 250.0,
+        "pvp": 399.99
+      },
+      "fuente": {
+        "nombre": "prueba",
+        "url": "https://example.com"
+      },
+      "financiero": {
+        "precio_compra": 250.0,
+        "roi_pct": 10.0
+      }
+    }
+  ],
   "calendario_eol": [
     {
       "referencia": "75367",
