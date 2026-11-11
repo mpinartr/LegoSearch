@@ -71,8 +71,15 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # Guardamos el CSV del día como stable: URL fija para descargar.
+
+          # Guardamos los ficheros recién generados ANTES de cambiar de rama:
+          # "git checkout -f" sobrescribe el working tree y, sin esto, se
+          # commiteaba el opportunities.json viejo de la rama.
+          mkdir -p /tmp/out
+          cp opportunities.json /tmp/out/
           CSFECHA="reports/oportunidades_$(date -u +%F).csv"
+          [ -f "$CSFECHA" ] && cp "$CSFECHA" /tmp/out/oportunidades.csv
+
           # Si la rama ya existe, partimos de ella para acumular histórico.
           if git fetch origin runtime-data; then
             git checkout -f -B runtime-data origin/runtime-data
@@ -81,10 +88,14 @@ jobs:
             git checkout --orphan runtime-data
             git rm -rf --cached .
           fi
+
+          # Restauramos lo generado en esta ejecución (lo que haya en la rama
+          # es el escaneo anterior; el de hoy manda).
+          cp /tmp/out/opportunities.json opportunities.json
+          [ -f /tmp/out/oportunidades.csv ] && cp /tmp/out/oportunidades.csv oportunidades.csv
+
           git add -f opportunities.json
-          if [ -f "$CSFECHA" ]; then
-            cp "$CSFECHA" oportunidades.csv
-            git add -f oportunidades.csv
-          fi
+          [ -f oportunidades.csv ] && git add -f oportunidades.csv
+
           git commit -m "chore: scan $(date -u +%FT%TZ)" || echo "No changes to commit"
           git push origin runtime-data
