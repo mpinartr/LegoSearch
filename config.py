@@ -159,21 +159,11 @@ FEEDS = [
         # Comunidad general: mucho volumen, muy poca señal de precio.
         "valor_eur": 0.40,
     },
-    {
-        # ⚠️ Endpoint de búsqueda por palabra clave (público y sin login).
-        # La URL histórica "https://www.chollometro.com/rss/search?q=lego"
-        # devuelve 404 desde 2025; Pepper la sustituyó por "rssx/keyword-alarm".
-        # El keyword-alarm público exige un token de la web, por lo que usamos
-        # el feed de novedades: comprobado que trae más LEGO que "rss/hot"
-        # (que en las pruebas tenía 0 menciones) y precios estructurados en el
-        # atributo pepper:merchant. Si tienes el token de tu alerta, cámbialo a:
-        #   https://www.chollometro.com/rssx/keyword-alarm/lego
-        "nombre": "Chollometro (LEGO)",
-        "url": "https://www.chollometro.com/rss/nuevos",
-        "tipo": "ofertas",
-        # Agregador de chollos con precio estructurado: máxima fiabilidad.
-        "valor_eur": 1.00,
-    },
+    # Chollometro se retiró: su feed público "rss/nuevos" devuelve un único
+    # item y cero menciones a LEGO (verificado el 2026-11-11). El endpoint
+    # keyword-alarm exige login, así que la fuente no aporta nada y solo
+    # consume tiempo de escaneo. Si algún día vuelve a funcionar con LEGO,
+    # reintroducir aquí con tipo "ofertas".
 ]
 
 # ---------------------------------------------------------------------------

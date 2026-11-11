@@ -235,6 +235,25 @@ _OFERTA_VIVA_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Descuentos en porcentaje: "30% off", "30% de descuento", "-30%", "30 % OFF".
+# Reddit y los foros anglosajones publican la rebaja así mucho más que en euros,
+# y hasta ahora se ignoraban por completo (el parser solo entendía importes).
+_DESCUENTO_PCT_RE = re.compile(
+    r"(?<![\d.,])(?P<pct>\d{1,2})\s*%\s*"
+    r"(?P<cola>off\b|de descuento|descuento|menos|dto\.?|reba(j|i)|de rebaja)?"
+    r"|(?<![\d.,])-\s*(?P<pct2>\d{1,2})\s*%",
+    re.IGNORECASE,
+)
+
+# Tiendas conocidas en el título de una oferta ("[Target MN] (30% off)").
+# Permite atribuir la oferta y descartar posts que no son de una tienda real.
+_TIENDA_RE = re.compile(
+    r"\b(amazon(?:\.es)?|el corte ingl(?:e|é)s|carrefour|smyths|toys ?rus"
+    r"|alcampo|mediamarkt|media markt|fnac|pccomponentes|walmart|target"
+    r"|argos|tesco|costco|zalando|juguettos|el corte ingles)\b",
+    re.IGNORECASE,
+)
+
 # La entrada debe hablar de LEGO, no solo mencionar una marca cuyo nombre
 # coincide con un set (p. ej. "Nintendo Switch" vs. set 71374 NES).
 _CONTEXTO_LEGO_RE = re.compile(r"\blego\b|\bbrick|\bminifig|\blego group", re.IGNORECASE)
@@ -316,6 +335,48 @@ def extraer_precios(texto: str) -> list[PriceMatch]:
             )
         )
     return matches
+
+
+def extraer_descuento_pct(texto: str) -> float | None:
+    """Devuelve el mayor descuento porcentual mencionado, o ``None``.
+
+    Reddit, foros y muchos agregadores comunican la rebaja en porcentaje
+    ("30% off", "-35%") en lugar de en euros. Sin esto, una oferta real como
+    "[Target] (30% off) Various sets" se descartaba por "sin importe".
+
+    Solo se aceptan valores plausibles (5-90 %): un "100%" suele ser una
+    condición ("100% compatible") y un 1-4 % no es una oferta que interese.
+    """
+    if not texto:
+        return None
+
+    mejor: float | None = None
+    for m in _DESCUENTO_PCT_RE.finditer(texto):
+        crudo = m.group("pct") or m.group("pct2")
+        if not crudo:
+            continue
+        # "30" suelto sin cola ("30% de algo") solo cuenta si hay palabra de
+        # rebaja; con "off"/"descuento" el porcentaje es inequívoco.
+        cola = (m.group("cola") or "").strip()
+        if not cola and m.group("pct2") is None:
+            continue
+        try:
+            valor = float(crudo)
+        except ValueError:
+            continue
+        if not 5 <= valor <= 90:
+            continue
+        if mejor is None or valor > mejor:
+            mejor = valor
+    return mejor
+
+
+def extraer_tienda(texto: str) -> str | None:
+    """Nombre de la tienda mencionada en el texto, normalizado, o ``None``."""
+    if not texto:
+        return None
+    m = _TIENDA_RE.search(texto)
+    return m.group(1).title() if m else None
 
 
 def extraer_referencias(texto: str, limite: int = 7) -> list[str]:
@@ -410,6 +471,11 @@ def evaluar_coleccionista(set_: dict) -> tuple[int, str]:
         - público adulto AFOL (18+, UCS, Icons, Technic Ultimate...)
         - alto volumen de piezas (>= FILTROS["piezas_alto_volumen"])
         - minifiguras exclusivas
+
+    OJO: la retirada próxima NO entra aquí aunque sea una señal clave. Se
+    puntúa aparte (``evaluar_retirada``) porque un set a punto de retirarse es
+    interesante incluso con 0 criterios de coleccionista: la escasez futura
+    empuja el precio de reventa con independencia del perfil del set.
     """
     puntos = 0
     detalle: list[str] = []
@@ -426,6 +492,53 @@ def evaluar_coleccionista(set_: dict) -> tuple[int, str]:
 
     etiqueta = " + ".join(detalle) if detalle else "sin criterios de coleccionista"
     return puntos, etiqueta
+
+
+# Días a partir de los cuales la retirada se considera "inminente". Un set que
+# LEGO deja de fabricar este trimestre conserva PVP hasta agotar stock y luego
+# sube en el mercado secundario: es la ventana de compra más fiable.
+_DIAS_RETIRADA_INMINENTE = 180
+
+
+def evaluar_retirada(set_: dict) -> tuple[int, str]:
+    """Puntúa de 0 a 2 la cercanía de la retirada.
+
+    Se apoya en la fecha oficial de Brickset (``exit_date``) cuando está
+    disponible, y cae a ``estado_eol`` si no. Es el dato más sólido del
+    sistema: no depende de que alguien publique una oferta.
+
+        2 puntos: se retira en <= 180 días (ventana de compra)
+        1 punto : se retira en <= 365 días
+        0 puntos: aún le queda más de un año, o ya no está a la venta
+
+    ``estado_eol`` es un respaldo imprescindible: la watchlist de config.py
+    no incluye ``exit_date`` (la fecha solo llega al enriquecer con Brickset),
+    así que sin esta vía los sets marcados como "Próximo EoL" puntuarían 0.
+    """
+    exit_date = set_.get("exit_date")
+    if exit_date:
+        try:
+            fecha = date.fromisoformat(str(exit_date)[:10])
+        except (ValueError, TypeError):
+            fecha = None
+        if fecha is not None:
+            dias = (fecha - date.today()).days
+            if dias < 0:
+                # Ya retirado: el precio de compra a PVP suele haber desaparecido.
+                return 0, f"retirado hace {abs(dias)} días"
+            if dias <= _DIAS_RETIRADA_INMINENTE:
+                return 2, f"se retira en {dias} días"
+            if dias <= 365:
+                return 1, f"se retira en {dias} días"
+            return 0, f"se retira en {dias} días"
+
+    # Sin fecha: usar la clasificación cualitativa de la watchlist.
+    estado = str(set_.get("estado_eol") or "").strip().lower()
+    if estado in ("próximo eol", "proximo eol", "eol inminente"):
+        return 2, "próximo EoL"
+    if estado in ("eol", "retirado"):
+        return 0, "retirado"
+    return 0, ""
 
 
 # ---------------------------------------------------------------------------
@@ -685,6 +798,8 @@ def elegir_precio_compra(entry: Entry, set_: dict) -> tuple[float, PriceMatch | 
 
     Devuelve ``(precio, match, origen)`` donde ``origen`` es:
         - ``"oferta_detectada"``: hay un precio real con descuento sobre el PVP
+        - ``"descuento_porcentual"``: no hay importe, pero sí un "% off"; se
+          deriva del PVP oficial
         - ``"precio_objetivo_compra"``: no hay oferta; se usa el objetivo
 
     REGLA ANTI-MSRP (el núcleo del filtrado)
@@ -720,6 +835,21 @@ def elegir_precio_compra(entry: Entry, set_: dict) -> tuple[float, PriceMatch | 
     if candidatos:
         mejor = candidatos[0]
         return mejor.valor, mejor, "oferta_detectada"
+
+    # Sin importe, pero con porcentaje: se deriva del PVP. Es fiable porque el
+    # PVP viene de Brickset (dato oficial), no del texto del feed.
+    pct = extraer_descuento_pct(entry.texto)
+    if pct is not None:
+        derivado = round(pvp * (1.0 - pct / 100.0), 2)
+        # El porcentaje debe superar el mínimo anti-MSRP; si no, es ruido.
+        if derivado <= maximo_oferta and derivado >= minimo:
+            match = PriceMatch(
+                valor=derivado,
+                texto_original=f"{pct:.0f}% off",
+                posicion=0,
+                etiqueta="oferta",
+            )
+            return derivado, match, "descuento_porcentual"
 
     return objetivo, None, "precio_objetivo_compra"
 
@@ -811,6 +941,9 @@ def evaluar_oportunidades(entradas: list[Entry],
                 descartar(ref, entry, f"confianza de cruce {confianza} < mínimo")
                 continue
 
+            # Retirada próxima: no descarta nada, pero pesa 15 pts en el score.
+            score_retirada, retirada_label = evaluar_retirada(set_)
+
             score_total = calcular_score(
                 score_col=score_col,
                 confianza=confianza,
@@ -821,6 +954,7 @@ def evaluar_oportunidades(entradas: list[Entry],
                 set_=set_,
                 edad=edad,
                 limite_dias=limite_dias,
+                score_retirada=score_retirada,
             )
             if score_total < float(filtros["score_total_minimo"]):
                 descartar(ref, entry, f"score total {score_total:.1f} < {filtros['score_total_minimo']}")
@@ -849,12 +983,16 @@ def evaluar_oportunidades(entradas: list[Entry],
 
 def calcular_score(*, score_col: int, confianza: int, valor_fuente: float,
                    roi_pct: float, match: PriceMatch | None, precio_compra: float,
-                   set_: dict, edad: float, limite_dias: int) -> float:
+                   set_: dict, edad: float, limite_dias: int,
+                   score_retirada: int = 0) -> float:
     """Score compuesto 0-100 que combina calidad del set y de la oferta.
 
-    Pesos: coleccionista 30, confianza 25, ROI 25, fuente 10, frescura 10.
+    Pesos: coleccionista 25, retirada 15, confianza 20, ROI 20, fuente 10,
+    frescura 10. La retirada entra con 15 puntos porque es la señal que mejor
+    predice revalorización y no depende de que exista una oferta publicada:
+    un set que se retira en semanas conserva PVP y sube después en reventa.
     """
-    peso_roi = 25.0 * min(max(roi_pct, 0.0) / 150.0, 1.0)  # 150 % ROI = puntuación plena
+    peso_roi = 20.0 * min(max(roi_pct, 0.0) / 150.0, 1.0)  # 150 % ROI = puntuación plena
     peso_fuente = 10.0 * max(0.0, min(valor_fuente, 1.0))
     frescura = 1.0 - (edad / limite_dias if limite_dias else 1.0)
     peso_frescura = 10.0 * max(0.0, min(frescura, 1.0))
@@ -863,7 +1001,8 @@ def calcular_score(*, score_col: int, confianza: int, valor_fuente: float,
     bonus_objetivo = 5.0 if match and precio_compra <= set_["precio_objetivo_compra"] else 0.0
 
     return round(
-        (score_col / 3.0) * 30.0 + (confianza / 100.0) * 25.0
+        (score_col / 3.0) * 25.0 + (max(0, min(score_retirada, 2)) / 2.0) * 15.0
+        + (confianza / 100.0) * 20.0
         + peso_roi + peso_fuente + peso_frescura + bonus_objetivo,
         1,
     )
