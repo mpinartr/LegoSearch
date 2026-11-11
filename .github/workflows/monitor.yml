@@ -50,6 +50,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Restore previous history
+        run: |
+          # El histórico NO vive en main (para no ensuciar el repo): está en la
+          # rama runtime-data. Sin este paso, cada ejecución empieza desde cero
+          # y el suelo de precios nunca se acumula.
+          if git fetch origin runtime-data 2>/dev/null; then
+            git show origin/runtime-data:opportunities.json > opportunities.json \
+              && echo "Histórico heredado de runtime-data" \
+              && python -c "import json;d=json.load(open('opportunities.json'));print('  oportunidades previas:',len(d.get('oportunidades',[])))"
+          else
+            echo "runtime-data aún no existe: primer escaneo desde cero"
+          fi
+
       - name: Run scan
         run: python main.py
         env:
