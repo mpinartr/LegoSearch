@@ -12,15 +12,15 @@
 name: monitor-opportunities
 
 on:
-  # Escaneo automático DESACTIVADO a propósito: LegoSearch todavía no está
-  # validado (ROI sin verificar, pocas oportunidades reales). Ejecuciones cada
-  # 6 h solo acumularían ruido en el histórico.
+  # Escaneo automático diario. Railway se descartó: su cron no terminaba y no
+  # publicaba, y este workflow ya funciona sin coste en repo público.
   #
-  # Para reactivarlo, descomenta las dos líneas siguientes:
-  # schedule:
-  #   - cron: "15 */6 * * *"
+  # 08:00 UTC = 09:00 en Madrid (invierno). Si se quiere cada 48 h, cambiar a
+  # "0 8 */2 * *".
+  schedule:
+    - cron: "0 8 * * *"
   #
-  # Mientras tanto, el escaneo se lanza a mano (desde Actions o desde el
+  # Además, el escaneo se puede lanzar a mano (desde Actions o desde el
   # superagente vía workflow_dispatch).
   #
   # Contrato para el superagente: este workflow es el ÚNICO motor de escaneo.
