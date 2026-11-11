@@ -35,10 +35,13 @@ import html
 import json
 import logging
 import os
+import random
 import re
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unicodedata
 from urllib.parse import urlparse
@@ -927,6 +930,55 @@ def estimar_reventa(set_: dict) -> dict:
     }
 
 
+def _contraste_suelo(op: dict, suelo_previo: dict[str, dict]) -> dict:
+    """Compara el precio actual con el mínimo histórico visto para el set.
+
+    Responde a la pregunta que el PVP no contesta: "¿esto es realmente barato
+    para este set, o ya se ha visto más barato?". Una oferta puede tener buen
+    ROI frente al PVP y seguir siendo peor que la de hace tres meses.
+    """
+    ref = op.get("referencia")
+    actual = round(float(op.get("precios", {}).get("compra") or 0), 2)
+    origen = op.get("precios", {}).get("origen")
+    previo = suelo_previo.get(ref)
+
+    if origen != "oferta_detectada":
+        return {
+            "precio_actual": actual,
+            "precio_minimo_historico": previo["precio"] if previo else None,
+            "es_minimo_historico": False,
+            "mejora_vs_minimo_pct": None,
+            "nota": "sin oferta real: el precio es el objetivo de compra",
+        }
+
+    if not previo:
+        return {
+            "precio_actual": actual,
+            "precio_minimo_historico": None,
+            "es_minimo_historico": True,  # primera vez que se ve este set
+            "mejora_vs_minimo_pct": None,
+            "nota": "primer precio real registrado para este set",
+        }
+
+    minimo = float(previo["precio"])
+    mejora = round((minimo - actual) / minimo * 100.0, 2) if minimo > 0 else 0.0
+    es_minimo = actual < minimo
+    if es_minimo:
+        nota = f"nuevo mínimo histórico (antes {minimo:.2f} €, {mejora:+.1f} %)"
+    elif mejora < 0:
+        nota = f"por encima del mínimo visto ({minimo:.2f} €)"
+    else:
+        nota = f"igual al mínimo visto ({minimo:.2f} €)"
+
+    return {
+        "precio_actual": actual,
+        "precio_minimo_historico": minimo,
+        "es_minimo_historico": es_minimo,
+        "mejora_vs_minimo_pct": mejora,
+        "nota": nota,
+    }
+
+
 def serializar_candidate(c: Candidate, ranking: int | None = None) -> dict:
     """Convierte una ``Candidate`` en el dict que consumirá el superagente."""
     op = asdict(c.financiero)
@@ -1029,6 +1081,14 @@ def actualizar_historico(existente: dict, nuevas: list[dict],
     # por fecha en el JSON de salida para lectura humana).
     historico = previas + nuevas_unicas
 
+    # Suelos de TODAS las entradas (sin duplicar): el mínimo real por set.
+    suelos = calcular_suelo_historico(historico)
+
+    # Aplica el contraste a TODAS las entradas (antiguas y nuevas), para que
+    # cada oferta del JSON diga si bate su mínimo o se queda por encima.
+    for op in historico:
+        op["contraste_suelo"] = _contraste_suelo(op, suelos)
+
     # Migración: entradas guardadas antes de existir "plan_reventa"/"tipo"
     # no deben romper la tabla ni dejar el JSON con esquema mixto.
     for op in historico:
@@ -1061,10 +1121,45 @@ def actualizar_historico(existente: dict, nuevas: list[dict],
             "temas": dict(sorted(histograma_temas.items(), key=lambda kv: -kv[1])),
         },
         "estado_feeds": estado_feeds,
+        # Suelo histórico por set: el precio de compra más bajo visto hasta
+        # hoy. Sirve de contraste real frente al PVP y a las estimaciones.
+        "suelos_historicos": suelos,
         # Ranking global: lo más interesante primero (es lo que consume el bot).
         # Se reasigna el número para que el orden del array y "ranking" casen.
         "oportunidades": _ordenar_y_ranquear(historico),
-    }, {op["id"] for op in nuevas_unicas}
+    }, {op["id"] for op in nuevas_unicas}, suelos
+
+
+def calcular_suelo_historico(oportunidades: list[dict]) -> dict[str, dict]:
+    """Precio de compra más bajo visto para cada set, de todo el histórico.
+
+    Es la referencia de suelo real del sistema: si hoy una oferta está a 320 €
+    y en marzo se vio a 285 €, esa oferta no es excepcional aunque su ROI sea
+    positivo frente al PVP.
+
+    Solo cuentan los precios de ofertas reales (``oferta_detectada``); los
+    ``precio_objetivo_compra`` son metas del usuario, no precios de mercado,
+    y contaminarían el suelo con cifras que nunca se pagaron.
+    """
+    suelo: dict[str, dict] = {}
+    for op in oportunidades:
+        precios = op.get("precios") or {}
+        if precios.get("origen") != "oferta_detectada":
+            continue
+        compra = precios.get("compra")
+        if not compra or compra <= 0:
+            continue
+
+        ref = op.get("referencia")
+        actual = suelo.get(ref)
+        if actual is None or compra < actual["precio"]:
+            suelo[ref] = {
+                "precio": round(float(compra), 2),
+                "fecha": op.get("detectada_en"),
+                "fuente": (op.get("fuente") or {}).get("nombre"),
+                "url": (op.get("fuente") or {}).get("url"),
+            }
+    return suelo
 
 
 def _ordenar_y_ranquear(oportunidades: list[dict]) -> list[dict]:
@@ -1155,13 +1250,20 @@ def tabla_oportunidades(oportunidades: list[dict]) -> str:
         venta_txt = f"{venta:.2f} € (~{plazo}m)"
         if not pl.get("valor_verificado", False):
             venta_txt += " ⚠"
+        # Suelo histórico: marca las ofertas que igualan o baten el mínimo visto.
+        min_hist = (o.get("contraste_suelo") or {}).get("precio_minimo_historico")
+        if min_hist:
+            marca = "🏆 " if (o.get("contraste_suelo") or {}).get("es_minimo_historico") else ""
+            compra_txt = f"{marca}{p['compra']:.2f} €"
+        else:
+            compra_txt = f"{p['compra']:.2f} €"
         filas.append(
             f"| {o.get('ranking') or '-'} "
             f"| {tipo} "
             f"| **{o['referencia']}** {o['nombre'][:30]} "
             f"| {o['tematica'][:16]} "
             f"| {o['estado_eol']} "
-            f"| {p['compra']:.2f} € "
+            f"| {compra_txt} "
             f"| {venta_txt} "
             f"| **{f['beneficio_neto']:.2f} €** "
             f"| **{f['roi_pct']:.1f} %** "
@@ -1211,6 +1313,9 @@ def escribir_csv(ruta: Path, oportunidades: list[dict],
         ("Estado EoL", lambda o: o.get("estado_eol")),
         ("PVP €", lambda o: o["precios"].get("oficial")),
         ("Compra €", lambda o: o["precios"].get("compra")),
+        ("Mín. histórico €", lambda o: (o.get("contraste_suelo") or {}).get("precio_minimo_historico")),
+        ("¿Nuevo mínimo?", lambda o: "sí" if (o.get("contraste_suelo") or {}).get("es_minimo_historico") else "no"),
+        ("Mejora vs mín. %", lambda o: (o.get("contraste_suelo") or {}).get("mejora_vs_minimo_pct")),
         ("Descuento %", lambda o: o["precios"].get("descuento_vs_pvp_pct")),
         ("Venta €", lambda o: (o.get("plan_reventa") or {}).get("precio_venta_sugerido")),
         ("Meses tenencia", lambda o: (o.get("plan_reventa") or {}).get("plazo_reventa_meses")),
@@ -1511,10 +1616,13 @@ def ejecutar(args: argparse.Namespace) -> int:
         imprimir_tabla(nuevas[: args.top] if args.top else nuevas)
         return 0
 
-    salida = Path(args.output) if args.output else Path(cfg.OUTPUT_FILE)
+    # Prioridad CLI > variable de entorno > config. La variable permite montar
+    # un volumen persistente en el contenedor sin tocar el comando de arranque.
+    salida = Path(args.output) if args.output else Path(
+        os.environ.get("LEGOSEARCH_OUTPUT") or cfg.OUTPUT_FILE)
     historico = cargar_historico(salida)
-    datos, ids_nuevos = actualizar_historico(historico, nuevas, estado_feeds,
-                                             resumen, marca_tiempo)
+    datos, ids_nuevos, _suelos = actualizar_historico(historico, nuevas, estado_feeds,
+                                                      resumen, marca_tiempo)
 
     # Calendario EoL: se añade al JSON para que el bot pueda avisar de las
     # retiradas próximas sin tener que consultar Brickset por su cuenta.
@@ -1550,6 +1658,9 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--simulate", action="store_true",
                         help="Ejecuta con datos de ejemplo, sin red.")
+    parser.add_argument("--once", action="store_true",
+                        help="Ejecución única y salida (útil con cron externo). "
+                             "Es el comportamiento por defecto; anula LOOP_MODE.")
     parser.add_argument("--dry-run", action="store_true",
                         help="No escribe ficheros; solo muestra resultados.")
     parser.add_argument("--output", default=None, help="Ruta alternativa del JSON de salida.")
@@ -1569,7 +1680,80 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--csv", metavar="RUTA", default=None,
                         help="Exporta además el ranking a CSV (usar con --tabla).")
     parser.add_argument("--verbose", "-v", action="store_true", help="Log detallado.")
+    parser.add_argument("--loop", action="store_true",
+                        help="Modo continuo (worker): repite el escaneo cada --interval. "
+                             "Pensado para Docker/Railway. También se activa con LOOP_MODE=1.")
+    parser.add_argument("--interval", type=float, default=None, metavar="MIN",
+                        help="Minutos entre escaneos en modo --loop "
+                             "(por defecto: SCAN_INTERVAL_MINUTES o 360).")
     return parser.parse_args(argv)
+
+
+def _segundos_intervalo(args: argparse.Namespace) -> int:
+    """Resuelve el intervalo entre escaneos: CLI > env > defecto (6 h)."""
+    if args.interval is not None and args.interval > 0:
+        return int(args.interval * 60)
+    env = os.environ.get("SCAN_INTERVAL_MINUTES")
+    if env:
+        try:
+            minutos = float(env)
+            if minutos > 0:
+                return int(minutos * 60)
+        except ValueError:
+            log.warning("SCAN_INTERVAL_MINUTES=%r no es un número; se usa 360.", env)
+    return 360 * 60
+
+
+def modo_loop(args: argparse.Namespace) -> int:
+    """Ejecuta escaneos indefinidamente, con espera entre uno y otro.
+
+    Diseñado para un contenedor (Railway, Docker, Fly.io...). Características
+    clave para no morir ni colgarse en producción:
+
+    - Un fallo en un ciclo se registra y se sigue; el worker no se cae.
+    - SIGTERM/SIGINT despiertan la espera de inmediato y salen con código 0
+      para que el orquestador no lo cuente como crash en bucle.
+    - Un jitter de hasta el 5 % evita que varios contenedores ataquen las
+      fuentes exactamente a la misma hora.
+    """
+    intervalo = _segundos_intervalo(args)
+    parada = threading.Event()
+
+    def _apagar(signum: int, _frame: object) -> None:
+        log.info("Señal %s recibida: terminando tras el ciclo actual.", signum)
+        parada.set()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _apagar)
+        except (ValueError, OSError):  # fuera del hilo principal o no soportada
+            pass
+
+    log.info("Worker iniciado · intervalo %d min (%.1f h). Ctrl+C o SIGTERM para parar.",
+             intervalo // 60, intervalo / 3600)
+    ciclo = 0
+    while not parada.is_set():
+        ciclo += 1
+        inicio = time.monotonic()
+        log.info("── Ciclo #%d ──", ciclo)
+        try:
+            codigo = ejecutar(args)
+            if codigo != 0:
+                log.warning("Ciclo #%d terminó con código %d.", ciclo, codigo)
+        except Exception:  # noqa: BLE001 — un ciclo roto no debe tumbar el worker
+            log.exception("Ciclo #%d falló; continúo con el siguiente.", ciclo)
+
+        if parada.is_set():
+            break
+        jitter = random.uniform(0, intervalo * 0.05)
+        espera = max(5.0, intervalo + jitter - (time.monotonic() - inicio))
+        log.info("Próximo escaneo en %.1f min (o SIGTERM para salir).", espera / 60)
+        # ``Event.wait`` vuelve al instante si llega una señal.
+        if parada.wait(espera):
+            break
+
+    log.info("Worker detenido tras %d ciclo(s).", ciclo)
+    return 0
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -1579,7 +1763,16 @@ def main(argv: Iterable[str] | None = None) -> int:
         format="%(asctime)s %(levelname)-7s %(message)s",
         datefmt="%H:%M:%S",
     )
+    # En Railway/Docker es más cómodo activar el worker por variable de entorno
+    # que cambiar el comando de arranque. ``--once`` tiene prioridad: permite
+    # lanzar una pasada suelta dentro de una imagen configurada como worker.
+    if args.once:
+        args.loop = False
+    elif os.environ.get("LOOP_MODE", "").strip().lower() in {"1", "true", "yes", "on"}:
+        args.loop = True
     try:
+        if args.loop:
+            return modo_loop(args)
         return ejecutar(args)
     except KeyboardInterrupt:
         log.warning("Interrumpido por el usuario.")

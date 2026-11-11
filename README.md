@@ -175,6 +175,14 @@ Ejemplo completo: [`examples/opportunities.example.json`](examples/opportunities
     { "nombre": "Brickset News", "ok": true, "entradas": 40 },
     { "nombre": "Reddit r/lego", "ok": false, "entradas": 0 }
   ],
+  "suelos_historicos": {
+    "75192": {
+      "precio": 655.0,
+      "fecha": "2026-09-14T18:20:00+00:00",
+      "fuente": "Chollometro (LEGO)",
+      "url": "https://www.chollometro.com/ofertas/ejemplo"
+    }
+  },
   "oportunidades": [
     {
       "id": "3f2c9a7e14b85d01",
@@ -217,6 +225,13 @@ Ejemplo completo: [`examples/opportunities.example.json`](examples/opportunities
       },
       "tipo": "chollo",
       "ranking": 1,
+      "contraste_suelo": {
+        "precio_actual": 600.0,
+        "precio_minimo_historico": 655.0,
+        "es_minimo_historico": true,
+        "mejora_vs_minimo_pct": 8.4,
+        "nota": "nuevo mínimo histórico (antes 655.00 €, +8.4 %)"
+      },
       "fuente": {
         "nombre": "Reddit r/legodeals",
         "tipo": "ofertas",
@@ -249,6 +264,13 @@ Ejemplo completo: [`examples/opportunities.example.json`](examples/opportunities
   útil para detectar criterios demasiado estrictos.
 - `estado_feeds` permite al agente saber si un "0 oportunidades" se debe a un
   bloqueo de red.
+- `contraste_suelo` compara el precio con el mínimo histórico del set:
+  - `es_minimo_historico = true`: iguala o bate lo mejor visto hasta ahora.
+  - `mejora_vs_minimo_pct < 0`: la oferta es **peor** que la de hace meses.
+  - `precio_minimo_historico = null`: primer precio real de ese set.
+  - Solo cuentan ofertas reales; el objetivo de compra nunca es "suelo".
+- `suelos_historicos` es el mapa set → mínimo, con fecha, fuente y URL: el
+  agente puede decir "visto a 655 € en Chollometro el 14/09".
 
 ### Ejemplos de consumo
 
@@ -298,6 +320,10 @@ LegoSearch/
 ├── calendario.py             # Calendario de retiradas (EoL) por tema y año
 ├── main.py                   # Motor completo (rastreo → filtro dual → export)
 ├── requirements.txt          # feedparser, requests
+├── Dockerfile                # Imagen para Railway/Docker (worker continuo)
+├── railway.json              # Configuración de despliegue en Railway
+├── .dockerignore
+├── .env.example              # Plantilla de variables de entorno
 ├── README.md
 ├── examples/
 │   └── opportunities.example.json
@@ -362,7 +388,38 @@ La cobertura de `exitDate` es del ~50-60 % según tema, y `exitDate` suele ser
 fin de mes o de año: tómalo como una ventana orientativa, no como un día
 exacto.
 
-## 8. Licencia
+## 8. Despliegue como worker (Railway / Docker)
+
+Además del workflow de GitHub Actions, el proyecto puede correr como proceso
+continuo en un contenedor.
+
+```bash
+# Local
+LOOP_MODE=1 SCAN_INTERVAL_MINUTES=360 python main.py --loop
+
+# Docker
+docker build -t legosearch .
+docker run --rm -e BRICKSET_API_KEY=xxx \
+  -v legosearch_data:/app/data legosearch
+
+# Una sola pasada (cron externo)
+docker run --rm legosearch python main.py --once
+```
+
+| Variable | Efecto | Defecto |
+|---|---|---|
+| `BRICKSET_API_KEY` | PVP oficial y fechas de retirada | — |
+| `LOOP_MODE` | `1` = proceso continuo | — |
+| `SCAN_INTERVAL_MINUTES` | Minutos entre escaneos | `360` |
+| `LEGOSEARCH_OUTPUT` | Ruta del JSON histórico | `opportunities.json` |
+
+El worker no se cae si un ciclo falla, y corta la espera al recibir `SIGTERM`
+(lo que manda Railway al redesplegar) saliendo con código 0.
+
+> **Monta `/app/data` como volumen**: si no, cada redespliegue borra el
+> histórico y se pierden los suelos de precio acumulados.
+
+## 9. Licencia
 
 MIT — ver [`LICENSE`](LICENSE).
 

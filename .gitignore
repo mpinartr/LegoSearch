@@ -21,6 +21,7 @@ reports/
 watchlist.json
 .env
 .env.*
+!.env.example
 
 # --- OS / editors ---
 .DS_Store

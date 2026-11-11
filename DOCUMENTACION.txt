@@ -337,6 +337,14 @@ Una entrada debe superar TODOS estos filtros para convertirse en oportunidad.
     escribir_csv()              CSV con ";" y BOM UTF-8 para Excel.
     escribir_reporte_md()       Reporte legible con tablas.
 
+  SUELO HISTÓRICO
+    calcular_suelo_historico()  Precio de compra más bajo visto por set.
+    _contraste_suelo()          Compara la oferta actual con ese mínimo.
+
+  WORKER
+    modo_loop()                 Bucle continuo con SIGTERM limpio.
+    _segundos_intervalo()       Resuelve el intervalo (CLI > env > 6 h).
+
   CALENDARIO
     construir_calendario()      (calendario.py) Sets que se retiran y cuándo.
     BricksetClient.datos()      (brickset.py) Datos oficiales de un set.
@@ -357,6 +365,9 @@ Una entrada debe superar TODOS estos filtros para convertirse en oportunidad.
   python main.py --only-feeds X     Solo fuentes que contengan X
   python main.py --sin-brickset     Ignorar la API de Brickset
   python main.py -v                 Log detallado (por qué se descarta cada cosa)
+  python main.py --loop             Worker continuo (Railway/Docker)
+  python main.py --loop --interval 120   Worker cada 2 h
+  python main.py --once             Una pasada y salir (aunque LOOP_MODE=1)
 
 
 --------------------------------------------------------------------------------
@@ -379,6 +390,88 @@ Una entrada debe superar TODOS estos filtros para convertirse en oportunidad.
 
   ESTADO ACTUAL: el escaneo automático cada 6 h está DESACTIVADO. El workflow
   solo se lanza a mano (workflow_dispatch).
+
+
+--------------------------------------------------------------------------------
+13 bis. SUELO HISTÓRICO DE PRECIOS (precio_minimo_historico)
+--------------------------------------------------------------------------------
+
+  QUÉ ES
+  El precio de compra más bajo que se ha visto nunca para cada set, calculado
+  sobre TODO el histórico acumulado en opportunities.json.
+
+  POR QUÉ
+  El PVP dice cuánto cuesta nuevo, pero no si una oferta es buena DE VERDAD.
+  Si hoy ves el 71043 a 289,90 € y en febrero estuvo a 240 €, el ROI frente al
+  PVP puede seguir siendo bueno y aun así ser una mala compra. El suelo
+  histórico responde a: "¿ya se ha visto más barato?".
+
+  CÓMO FUNCIONA
+  1. Se recorre el histórico y se toma min(precios.compra) por referencia.
+  2. Solo cuentan las ofertas REALES (precios.origen = "oferta_detectada").
+     Los "precio_objetivo_compra" se excluyen: son metas del usuario, no
+     precios que nadie haya pagado nunca, y ensuciarían el mínimo.
+  3. Cada oportunidad recibe un bloque "contraste_suelo":
+
+       "contraste_suelo": {
+         "precio_actual": 289.9,
+         "precio_minimo_historico": 240.0,
+         "es_minimo_historico": false,
+         "mejora_vs_minimo_pct": -20.79,
+         "nota": "por encima del mínimo visto (240.00 €)"
+       }
+
+  4. El JSON publica además "suelos_historicos", un mapa set -> mínimo con
+     fecha, fuente y URL de dónde se vio. Así el bot puede enseñar "visto a
+     240 € en Chollometro el 2026-02-01".
+
+  DÓNDE SE VE
+  - JSON:      bloque contraste_suelo + suelos_historicos
+  - CSV:       columnas "Mín. histórico €", "¿Nuevo mínimo?", "Mejora vs mín. %"
+  - Markdown:  🏆 delante del precio cuando bate o iguala el mínimo
+
+  NOTA SOBRE EL ALMACENAMIENTO
+  Se calcula sobre el JSON histórico acumulado; no hay base de datos SQLite en
+  este proyecto. Si en el futuro se añade, el cálculo es el mismo: basta con
+  un SELECT min(precio) GROUP BY referencia.
+
+
+--------------------------------------------------------------------------------
+13 ter. DESPLIEGUE COMO WORKER (RAILWAY / DOCKER)
+--------------------------------------------------------------------------------
+
+  VARIABLES DE ENTORNO
+    BRICKSET_API_KEY          Obligatoria para PVP y fechas de retirada.
+    LOOP_MODE                 1 = proceso continuo; 0/vacío = una pasada.
+    SCAN_INTERVAL_MINUTES     Minutos entre escaneos (defecto 360 = 6 h).
+    LEGOSEARCH_OUTPUT         Ruta del JSON (en Docker: /app/data/...).
+    TZ                        Europe/Madrid (en la imagen ya viene puesto).
+
+  PRIORIDAD DEL INTERVALO
+    --interval (CLI)  >  SCAN_INTERVAL_MINUTES  >  360 min
+
+  COMPORTAMIENTO DEL WORKER
+    - Un ciclo que falla se registra y se sigue; el proceso no muere.
+    - SIGTERM/SIGINT (lo que manda Railway al redesplegar) corta la espera al
+      instante y sale con código 0 para no provocar reinicios en bucle.
+    - Jitter de hasta 5 % en la espera, para no golpear los feeds siempre a
+      la misma hora exacta.
+
+  FICHEROS
+    Dockerfile        Imagen python:3.12-slim con curl y usuario sin root.
+    .dockerignore     Excluye .venv, datos locales y secretos.
+    railway.json      Builder Dockerfile + startCommand + reinicio ON_FAILURE.
+    .env.example      Plantilla de variables (esta SÍ se versiona).
+
+  ARRANQUE LOCAL
+    docker build -t legosearch .
+    docker run --rm -e BRICKSET_API_KEY=xxx -v legosearch_data:/app/data legosearch
+
+  EJECUCIÓN ÚNICA (cron externo, CI)
+    docker run --rm legosearch python main.py --once
+
+  IMPORTANTE: monta /app/data como volumen. Si no, cada redespliegue borra el
+  histórico y se pierden los suelos acumulados.
 
 
 --------------------------------------------------------------------------------
