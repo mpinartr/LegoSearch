@@ -1,10 +1,16 @@
-# LegoSearch — worker de monitorización de chollos LEGO.
+# LegoSearch — monitorización de chollos LEGO.
 #
-# Imagen pensada para Railway / Docker / Fly.io. Arranca en modo worker
-# (--loop): escanea, guarda el histórico y espera el siguiente intervalo.
+# Imagen pensada para Railway / Docker / Fly.io. Dos modos:
+#
+#   Worker persistente (--loop): escanea, guarda y espera el siguiente ciclo.
+#   Cron de Railway: el contenedor arranca con --once, escanea, publica y sale.
+#
+# En ambos casos el resultado se publica en la rama runtime-data de GitHub
+# (de donde lee el superagente de Telegram) si GITHUB_PUBLISH_TOKEN está
+# definido. Sin token, todo queda solo en el volumen /app/data.
 #
 #   docker build -t legosearch .
-#   docker run -e BRICKSET_API_KEY=xxx -e LEGO_REVISION_MINUTOS=360 legosearch
+#   docker run -e BRICKSET_API_KEY=xxx -e LEGO_REVISION_MINUTOS=1440 legosearch
 #
 # Para una ejecución única (cron externo, CI...):
 #   docker run legosearch python main.py --once
@@ -23,7 +29,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     TZ=Europe/Madrid \
     LOOP_MODE=1 \
-    LEGO_REVISION_MINUTOS=360
+    LEGO_REVISION_MINUTOS=1440
 
 WORKDIR /app
 

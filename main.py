@@ -1656,8 +1656,38 @@ def ejecutar(args: argparse.Namespace) -> int:
         ruta_csv = Path(cfg.BASE_DIR) / "reports" / f"oportunidades_{date.today().isoformat()}.csv"
         escribir_csv(ruta_csv, datos["oportunidades"], datos.get("calendario_eol") or [])
         log.info("CSV: %s", ruta_csv)
+    else:
+        ruta_csv = None
+
+    # Publicación en la rama runtime-data: es de donde lee el superagente.
+    # Opcional (sin GITHUB_PUBLISH_TOKEN no hace nada) y nunca letal: si falla,
+    # el JSON ya está guardado en el volumen y el ciclo se considera correcto.
+    if not getattr(args, "no_publish", False):
+        _publicar_en_github(salida, ruta_csv)
 
     return 0
+
+
+def _publicar_en_github(json_path: Path, csv_path: Path | None) -> None:
+    """Empuja el resultado a runtime-data sin propagar errores al ciclo."""
+    try:
+        from publicacion import configuracion, publicar
+    except ImportError as exc:  # pragma: no cover - instalación incompleta
+        log.warning("Módulo de publicación no disponible (%s)", exc)
+        return
+
+    if configuracion() is None:
+        log.debug("GITHUB_PUBLISH_TOKEN no definido: no se publica en GitHub.")
+        return
+
+    try:
+        ok = publicar(json_path, csv_path)
+    except Exception as exc:  # noqa: BLE001 — nunca tumbar el worker
+        log.warning("Publicación en GitHub falló de forma inesperada (%s)", exc)
+        return
+
+    if not ok:
+        log.warning("El escaneo NO se publicó en runtime-data; queda en el volumen.")
 
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
@@ -1674,6 +1704,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
                         help="No escribe ficheros; solo muestra resultados.")
     parser.add_argument("--output", default=None, help="Ruta alternativa del JSON de salida.")
     parser.add_argument("--no-report", action="store_true", help="No genera el reporte Markdown.")
+    parser.add_argument("--no-publish", action="store_true",
+                        help="No publica el resultado en la rama runtime-data de GitHub.")
     parser.add_argument("--only-feeds", nargs="+", metavar="TEXTO", default=None,
                         help="Filtra fuentes cuyo nombre/URL contenga alguno de estos textos.")
     parser.add_argument("--max-entradas", type=int, default=None,

@@ -390,18 +390,33 @@ Una entrada debe superar TODOS estos filtros para convertirse en oportunidad.
 
   MOTOR DE ESCANEO (decisión de arquitectura):
   El superagente de Telegram vive en otra aplicación de Railway y lee
-  SIEMPRE de la rama runtime-data. Por eso el único motor de escaneo es
-  GitHub Actions (workflow monitor.yml):
-    - El bot lanza el workflow con workflow_dispatch.
-    - GitHub ejecuta el escaneo en su infraestructura (sin coste).
-    - El resultado se commitea a runtime-data y el bot lo lee.
-  El servicio de Railway está en PAUSA: no puede publicar en runtime-data
-  (escribe en un volumen privado) y ya no aporta nada al bot.
-  El worker de Railway sigue disponible como alternativa local o si
-  algún día se quiere un escaneo persistente con volcado a GitHub.
+  SIEMPRE de la rama runtime-data. El escaneo corre en RAILWAY con un
+  Cron Schedule, no como worker persistente:
 
-  ESTADO ACTUAL: el escaneo automático cada 6 h está DESACTIVADO. El workflow
-  solo se lanza a mano (workflow_dispatch).
+    - Cron de Railway (UTC): "0 8 * * *"   -> cada 24 h a las 08:00 UTC
+                             "0 8 */2 * *" -> cada 48 h (días pares)
+    - El contenedor arranca, escanea con --once y SALE. Railway solo
+      factura esos minutos, no el día completo.
+    - Al terminar publica opportunities.json en runtime-data
+      (módulo publicacion.py) y el bot lo lee de ahí.
+    - Si quieres un escaneo puntual, el bot puede lanzar el workflow de
+      GitHub Actions (workflow_dispatch), que comparte la misma rama.
+
+  Por qué no worker persistente:
+    Un worker --loop está encendido 24/7 y cuesta crédito incluso mientras
+    duerme entre ciclos. Railway no duerme contenedores entre iteraciones.
+
+  Requisito para publicar: GITHUB_PUBLISH_TOKEN en las variables del
+  servicio (permiso "Contents: Read and write" solo sobre este repo).
+  Sin token el escaneo funciona y guarda en el volumen, pero el bot NO ve
+  los datos: se queda con lo último que haya en runtime-data.
+
+  OJO (cron de Railway): si una ejecución anterior sigue viva cuando toca
+  la siguiente, Railway la SALTA. Por eso el comando de inicio debe ser
+  "python main.py --once" y no "--loop".
+
+  ESTADO ACTUAL: el escaneo automático de GitHub Actions está DESACTIVADO
+  (su schedule está comentado). Solo se usa a mano con workflow_dispatch.
 
 
 --------------------------------------------------------------------------------
