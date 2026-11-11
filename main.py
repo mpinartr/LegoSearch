@@ -888,12 +888,15 @@ PLAZO_REVENTA_MESES = {
 def estimar_reventa(set_: dict) -> dict:
     """Escenario de venta: cuándo y a qué precio conviene revender.
 
-    Devuelve un plan explícito para que quien consuma el JSON sepa si la
-    oportunidad es de giro rápido (semanas) o de tenencia (meses).
-
     ``precio_venta_sugerido``: el valor estimado de reventa, con un pequeño
     descuento (5 %) para reflejar que en la práctica no se vende al máximo
     teórico del mercado.
+
+    ``valor_verificado``: **False** mientras el precio de reventa venga de
+    ``config.py``. La API de Brickset no publica precios de mercado, así que
+    esos importes son estimaciones de planificación y el ROI resultante es
+    orientativo, no una cotización. Pasa a True si se conecta una fuente de
+    precios reales (BrickLink).
     """
     valor = float(set_["precio_estimado_reventa"])
     plazo = int(PLAZO_REVENTA_MESES.get(set_["estado_eol"], 12))
@@ -902,6 +905,7 @@ def estimar_reventa(set_: dict) -> dict:
         "precio_venta_sugerido": sugerido,
         "plazo_reventa_meses": plazo,
         "tipo_operacion": "giro_rápido" if plazo <= 3 else "tenencia",
+        "valor_verificado": bool(set_.get("reventa_verificada")),
         "horizonte": (
             f"~{plazo} mes(es) — reventa tras la retirada, mercado escaso"
             if plazo <= 3
@@ -1051,19 +1055,31 @@ def actualizar_historico(existente: dict, nuevas: list[dict],
 
 
 def _ordenar_y_ranquear(oportunidades: list[dict]) -> list[dict]:
-    """Ordena por interés real y renumera ``ranking``.
+    """Ordena por interés real, renumera ``ranking`` y deduplica por set.
 
-    El interés combina score y margen por mes: dos oportunidades con el mismo
-    score no valen lo mismo si una tarda 18 meses y otra 1 en rotar.
+    El histórico acumula entradas del mismo set con precios distintos (uno por
+    cada noticia y ejecución). En el ranking solo debe quedar la mejor: la de
+    mayor interés, que es la que de verdad importa para decidir una compra.
     """
     def clave(o: dict) -> float:
         fin = o.get("financiero") or {}
         return float(o.get("score_total") or 0) + float(fin.get("margen_mensual_pct") or 0) * 0.5
 
     ordenadas = sorted(oportunidades, key=clave, reverse=True)
-    for i, op in enumerate(ordenadas, start=1):
+
+    # Nos quedamos con la primera aparición de cada referencia (la mejor).
+    vistos: set[str] = set()
+    unicas = []
+    for op in ordenadas:
+        ref = op.get("referencia")
+        if ref in vistos:
+            continue
+        vistos.add(ref)
+        unicas.append(op)
+
+    for i, op in enumerate(unicas, start=1):
         op["ranking"] = i
-    return ordenadas
+    return unicas
 
 
 def escribir_json_atomico(ruta: Path, datos: dict) -> None:
@@ -1100,6 +1116,10 @@ def tabla_oportunidades(oportunidades: list[dict]) -> str:
         venta = pl.get("precio_venta_sugerido", p["estimado_reventa"])
         plazo = pl.get("plazo_reventa_meses", "?")
         tipo = "🟢 chollo" if o.get("tipo") == "chollo" else "👁️ vigilancia"
+        # Una reventa no verificada hace que el ROI sea orientativo, no real.
+        venta_txt = f"{venta:.2f} € (~{plazo}m)"
+        if not pl.get("valor_verificado", False):
+            venta_txt += " ⚠"
         filas.append(
             f"| {o.get('ranking') or '-'} "
             f"| {tipo} "
@@ -1107,7 +1127,7 @@ def tabla_oportunidades(oportunidades: list[dict]) -> str:
             f"| {o['tematica'][:16]} "
             f"| {o['estado_eol']} "
             f"| {p['compra']:.2f} € "
-            f"| {venta:.2f} € (~{plazo}m) "
+            f"| {venta_txt} "
             f"| **{f['beneficio_neto']:.2f} €** "
             f"| **{f['roi_pct']:.1f} %** "
             f"| {f.get('margen_mensual_pct', 0):.1f} % "
@@ -1167,6 +1187,10 @@ def escribir_reporte_md(ruta: Path, datos: dict, nuevas: list[dict]) -> None:
         "",
         "**%/mes:** ROI repartido entre los meses de tenencia estimados. "
         "Sirve para comparar un giro rápido con una tenencia larga.",
+        "",
+        "**⚠:** el precio de reventa es una estimación de `config.py`, no una "
+        "cotización de mercado (la API de Brickset no publica precios de reventa). "
+        "Los importes de compra y PVP sí son oficiales.",
         "",
     ]
     if nuevas:
