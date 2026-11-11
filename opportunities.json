@@ -4,10 +4,10 @@
     "name": "LegoSearch",
     "version": "1.0.0"
   },
-  "generado_en": "2026-11-11T11:26:13+00:00",
+  "generado_en": "2026-11-11T13:35:51+00:00",
   "resumen": {
     "sets_en_watchlist": 28,
-    "entradas_analizadas": 190,
+    "entradas_analizadas": 160,
     "validas": 0,
     "descartadas": 8,
     "descartadas_detalle": [
@@ -76,7 +76,7 @@
         "url": "https://www.reddit.com/r/legodeals/comments/1xs3n6t/buy_lego_star_wars_millennium_falcon_collector/"
       }
     ],
-    "duracion_segundos": 77.24,
+    "duracion_segundos": 76.53,
     "total_historicas": 0,
     "nuevas_en_esta_ejecucion": 0,
     "duplicadas_ignoradas": 0,
@@ -107,11 +107,6 @@
       "nombre": "Reddit r/lego",
       "ok": true,
       "entradas": 25
-    },
-    {
-      "nombre": "Chollometro (LEGO)",
-      "ok": true,
-      "entradas": 30
     }
   ],
   "suelos_historicos": {},
