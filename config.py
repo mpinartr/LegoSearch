@@ -87,6 +87,22 @@ FILTROS = {
     # pieza o un artículo satírico. Se descarta.
     "precio_minimo_pct_pvp": 10.0,
 
+    # --- Anti-MSRP: descuento mínimo para ser "chollo" -------------------
+    # Un blog que anuncia un lanzamiento cita su PVP oficial. Ese precio NO es
+    # una oportunidad: es el precio de salida. Para clasificar algo como
+    # "chollo" exigimos un descuento real sobre el PVP oficial.
+    #
+    # 5 % filtra los anuncios a precio oficial y los empates por redondeo,
+    # sin descartar rebajas modestas (un 6-8 % ya es una oferta real).
+    "descuento_minimo_chollo_pct": 5.0,
+
+    # --- Descarte de entradas sin precio --------------------------------
+    # Si una entrada solo cita sets y no aporta ningún importe, es una noticia
+    # (lanzamiento, rumor, EoL), no una oportunidad de compra. Con True, esas
+    # entradas no generan "señal_vigilancia" y la tabla deja de llenarse de
+    # sets a precio objetivo.
+    "descartar_sin_precio": True,
+
     # Umbrales de scoring final.
     # Bajos a propósito: el score sirve para ORDENAR la tabla, no para ocultar
     # resultados. Los umbrales financieros de FINANZAS siguen filtrando.
@@ -101,38 +117,47 @@ FILTROS = {
 #   - noticias    : blogs y prensa especializada (lanzamientos, rumores)
 #   - eol         : fuente que suele anunciar retiradas (EoL)
 #   - ofertas     : agregadores/comunidades de chollos
-# ``valor_eur`` es un multiplicador de fiabilidad (0-1) que pondera el score:
-# una oferta de r/legodeals vale más que un descuento mencionado de pasada.
+# ``valor_eur`` es un multiplicador de fiabilidad (0-1) que pondera el score.
+# Pesos revisados tras medir el rendimiento real de cada fuente: las de tipo
+# "ofertas" son las únicas que pueden aportar descuentos reales; los blogs de
+# noticias citan PVP de lanzamiento y se quedan en un papel secundario.
 FEEDS = [
     {
         "nombre": "Brickset News",
         "url": "https://brickset.com/feed",
         "tipo": "noticias",
-        "valor_eur": 0.8,
+        # Principalmente lanzamientos con PVP: útil para descubrir sets,
+        # no para encontrar rebajas.
+        "valor_eur": 0.35,
     },
     {
         "nombre": "Brick Fanatics",
         "url": "https://www.brickfanatics.com/feed/",
         "tipo": "eol",
-        "valor_eur": 0.9,
+        # Aporta señales de retirada (valiosas para el calendario EoL),
+        # pero casi nunca precios de oferta.
+        "valor_eur": 0.55,
     },
     {
         "nombre": "The Lego Car Blog",
         "url": "https://thelegocarblog.com/feed/",
         "tipo": "noticias",
-        "valor_eur": 0.6,
+        # Blog de MOCs: 0 precios en todas las mediciones.
+        "valor_eur": 0.20,
     },
     {
         "nombre": "Reddit r/legodeals",
         "url": "https://www.reddit.com/r/legodeals/.rss",
         "tipo": "ofertas",
-        "valor_eur": 1.0,
+        # Única fuente de ofertas comunitarias reales (cuando no da 429).
+        "valor_eur": 1.00,
     },
     {
         "nombre": "Reddit r/lego",
         "url": "https://www.reddit.com/r/lego/.rss",
         "tipo": "noticias",
-        "valor_eur": 0.75,
+        # Comunidad general: mucho volumen, muy poca señal de precio.
+        "valor_eur": 0.40,
     },
     {
         # ⚠️ Endpoint de búsqueda por palabra clave (público y sin login).
@@ -146,7 +171,8 @@ FEEDS = [
         "nombre": "Chollometro (LEGO)",
         "url": "https://www.chollometro.com/rss/nuevos",
         "tipo": "ofertas",
-        "valor_eur": 1.0,
+        # Agregador de chollos con precio estructurado: máxima fiabilidad.
+        "valor_eur": 1.00,
     },
 ]
 

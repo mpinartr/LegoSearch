@@ -678,22 +678,28 @@ def confianza_cruce(entry: Entry, referencia: str, set_: dict) -> int:
 
 
 def elegir_precio_compra(entry: Entry, set_: dict) -> tuple[float, PriceMatch | None, str]:
-    """Selecciona el precio de compra efectivo.
+    """Selecciona el precio de compra efectivo y su origen.
 
-    Prioridad:
-        1. Precio detectado que no supera el objetivo de compra.
-        2. Precio detectado por debajo del PVP aunque supere el objetivo
-           (se marca con ``excede_objetivo=True`` en la exportación).
-        3. Si no hay precio válido: precio objetivo de la watchlist (solo en
-           feeds de ofertas o cuando la entrada menciona precios en euros).
+    Devuelve ``(precio, match, origen)`` donde ``origen`` es:
+        - ``"oferta_detectada"``: hay un precio real con descuento sobre el PVP
+        - ``"precio_objetivo_compra"``: no hay oferta; se usa el objetivo
 
-    Anti-ruido: un precio "suelto" (sin €/EUR) en un feed editorial se ignora
-    salvo que el titular o el resumen tenga más de un importe; así evitamos
-    inventar oportunidades a partir de números sin relación (fechas, ventas).
+    REGLA ANTI-MSRP (el núcleo del filtrado)
+    ----------------------------------------
+    Un precio solo cuenta como oferta si es **estrictamente inferior** al PVP
+    oficial con un margen mínimo (``descuento_minimo_chollo_pct``). Los blogs
+    de noticias citan el PVP al anunciar lanzamientos; sin esta regla, un
+    "LEGO 71888 por 279,99 €" (su precio de salida) entraba como chollo con
+    ROI calculado sobre una rebaja que nunca existió.
+
+    Anti-ruido adicional: un precio "suelto" (sin €/EUR) en un feed editorial
+    se ignora salvo que haya más de un importe; así no se confunden fechas o
+    números de set con precios.
     """
     pvp = set_["precio_oficial"]
     objetivo = set_["precio_objetivo_compra"]
     minimo = pvp * float(cfg.FILTROS["precio_minimo_pct_pvp"]) / 100.0
+    maximo_oferta = pvp * (1.0 - float(cfg.FILTROS["descuento_minimo_chollo_pct"]) / 100.0)
 
     precios = entry.precios
     if entry.tipo != "ofertas" and len(precios) < 2:
@@ -704,7 +710,8 @@ def elegir_precio_compra(entry: Entry, set_: dict) -> tuple[float, PriceMatch | 
     # Preferimos los marcados como "oferta", luego "general"; ignoramos "pvp".
     orden = {"oferta": 0, "general": 1, "pvp": 2}
     candidatos = sorted(
-        (p for p in precios if minimo <= p.valor <= pvp),
+        # Estricto: debe quedar por debajo del umbral anti-MSRP.
+        (p for p in precios if minimo <= p.valor <= maximo_oferta),
         key=lambda p: (orden[p.etiqueta], p.valor),
     )
     if candidatos:
@@ -772,11 +779,16 @@ def evaluar_oportunidades(entradas: list[Entry],
             # --- Precio de compra -----------------------------------------
             precio_compra, match, origen = elegir_precio_compra(entry, set_)
             if match is None:
-                # Sin oferta concreta en la entrada. Solo aceptamos el precio
-                # objetivo de la watchlist si la entrada es una señal de compra
-                # (feed de ofertas o lenguaje de precio explícito). Un artículo
-                # editorial ("el mejor modular") cita referencias pero no es
-                # una oportunidad de compra, así que se descarta.
+                # Sin precio real, no hay oportunidad de compra: es una noticia
+                # (lanzamiento, rumor, EoL). Con "descartar_sin_precio" activo
+                # se descarta siempre, en lugar de generar una "señal_vigilancia"
+                # con el precio objetivo como si fuera una oferta.
+                if cfg.FILTROS.get("descartar_sin_precio", False):
+                    descartar(ref, entry,
+                              "sin oferta real (precio = PVP o sin importe)")
+                    continue
+                # Modo permisivo: solo aceptamos el objetivo si la entrada es
+                # una señal de compra (feed de ofertas o lenguaje de precio).
                 if entry.tipo != "ofertas" and not _OFERTA_VIVA_RE.search(entry.texto):
                     descartar(ref, entry, "sin precio detectado ni señal de oferta")
                     continue
@@ -1056,17 +1068,39 @@ def actualizar_historico(existente: dict, nuevas: list[dict],
 
 
 def _ordenar_y_ranquear(oportunidades: list[dict]) -> list[dict]:
-    """Ordena por interés real, renumera ``ranking`` y deduplica por set.
+    """Ordena por interés real, renumera ``ranking`` y depura el histórico.
 
-    El histórico acumula entradas del mismo set con precios distintos (uno por
-    cada noticia y ejecución). En el ranking solo debe quedar la mejor: la de
-    mayor interés, que es la que de verdad importa para decidir una compra.
+    El histórico acumula entradas de ejecuciones anteriores. Si las reglas de
+    clasificación cambian, esas entradas pueden dejar de ser válidas (por
+    ejemplo, una ``señal_vigilancia`` creada cuando aún se permitían entradas
+    sin precio). Aquí se descartan para que la tabla solo muestre lo que
+    cumple los criterios actuales.
+
+    Además deduplica por set: si hay varias entradas de la misma referencia,
+    solo se conserva la de mayor interés.
     """
+    filtros = cfg.FILTROS
+    vigentes: list[dict] = []
+    for op in oportunidades:
+        tipo = op.get("tipo")
+        if tipo == "señal_vigilancia" and filtros.get("descartar_sin_precio", False):
+            continue
+        # Una oferta debe seguir cumpliendo el umbral anti-MSRP actual.
+        if tipo == "chollo":
+            precios = op.get("precios") or {}
+            compra = precios.get("compra")
+            pvp = precios.get("oficial")
+            if compra and pvp:
+                maximo = pvp * (1.0 - float(filtros["descuento_minimo_chollo_pct"]) / 100.0)
+                if compra > maximo:
+                    continue
+        vigentes.append(op)
+
     def clave(o: dict) -> float:
         fin = o.get("financiero") or {}
         return float(o.get("score_total") or 0) + float(fin.get("margen_mensual_pct") or 0) * 0.5
 
-    ordenadas = sorted(oportunidades, key=clave, reverse=True)
+    ordenadas = sorted(vigentes, key=clave, reverse=True)
 
     # Nos quedamos con la primera aparición de cada referencia (la mejor).
     vistos: set[str] = set()

@@ -1,0 +1,418 @@
+================================================================================
+LEGOSEARCH — DOCUMENTACIÓN RESUMIDA
+Cómo busca, qué criterios aplica y dónde busca
+================================================================================
+Generado: 11 de noviembre de 2026
+Versión de la app: 1.0.0 (schema 1.0)
+Repositorio: https://github.com/mpinartr/LegoSearch
+================================================================================
+
+
+--------------------------------------------------------------------------------
+1. QUÉ HACE (RESUMEN EN UNA FRASE)
+--------------------------------------------------------------------------------
+
+LegoSearch lee fuentes RSS públicas relacionadas con LEGO, detecta menciones de
+sets concretos de una lista de inversión (WATCHLIST), extrae precios del texto y
+calcula si comprar a ese precio tendría beneficio al revender.
+
+No compra, no notifica y no hace scraping de tiendas. Solo genera datos
+(JSON y CSV) para que otro sistema decida.
+
+
+--------------------------------------------------------------------------------
+2. ESTRATEGIA "LEAN": POR QUÉ NO HAY SCRAPING
+--------------------------------------------------------------------------------
+
+Se descartó a propósito el scraping de tiendas (Amazon, El Corte Inglés,
+LEGO.com) porque:
+  - Están protegidas por Cloudflare y bloquean bots de forma agresiva.
+  - Requieren mantenimiento constante cuando cambian las defensas.
+  - El riesgo de banear la IP es alto.
+
+En su lugar se usan feeds RSS públicos y la API oficial de Brickset.
+
+
+--------------------------------------------------------------------------------
+3. DÓNDE SE BUSCA — LAS 6 FUENTES RSS
+--------------------------------------------------------------------------------
+
+Cada fuente tiene un "tipo" (orienta cómo se interpreta la señal) y un
+"valor_eur" (fiabilidad de 0 a 1, que pondera la puntuación final).
+
+  #  NOMBRE                  TIPO        FIAB.  URL
+  -- ----------------------- ----------- -----  --------------------------------
+  1  Reddit r/legodeals      ofertas      1.00  https://www.reddit.com/r/legodeals/.rss
+  2  Chollometro (LEGO)      ofertas      1.00  https://www.chollometro.com/rss/nuevos
+  3  Brick Fanatics          eol          0.55  https://www.brickfanatics.com/feed/
+  4  Reddit r/lego           noticias     0.40  https://www.reddit.com/r/lego/.rss
+  5  Brickset News           noticias     0.35  https://brickset.com/feed
+  6  The Lego Car Blog       noticias     0.20  https://thelegocarblog.com/feed/
+
+  ORDENADO POR FIABILIDAD. Pesos revisados tras medir el rendimiento real:
+  solo las fuentes de tipo "ofertas" pueden aportar descuentos reales. Los
+  blogs de noticias citan PVP de lanzamiento y quedan en papel secundario
+  (0.20-0.35). Brick Fanatics mantiene 0.55 por sus señales de retirada (EoL),
+  que alimentan el calendario.
+
+TIPOS:
+  - "ofertas"  : agregadores/comunidades de chollos. La señal más valiosa.
+  - "eol"      : fuentes que anuncian retiradas de sets (End of Life).
+  - "noticias" : blogs y prensa especializada (lanzamientos, rumores).
+
+PROBLEMA CONOCIDO DE LAS FUENTES
+  En una ejecución real: 165 entradas -> 109 hablan de LEGO -> solo 5 traen
+  un precio. Y de esas 5, casi todas son anuncios de lanzamiento (el precio es
+  el PVP oficial), no ofertas. Es decir: los feeds son de NOTICIAS, no de
+  CHOLLOS. Esta es la limitación principal del proyecto.
+
+  Detalle por fuente (medido):
+    Brickset News        40 entradas |  5 con LEGO+precio (todas PVP de lanzamiento)
+    Brick Fanatics       50 entradas |  0 con precio
+    The Lego Car Blog    20 entradas |  0 con precio
+    Reddit r/legodeals   25 entradas |  0 con precio parseable
+    Chollometro          30 entradas |  0-2 con LEGO (feed rotativo)
+
+  NOTA SOBRE REDDIT: bloquea con HTTP 429. Se comprobó que el bloqueo no es por
+  el User-Agent sino por la huella TLS de la librería `requests`. Solución
+  aplicada: esos feeds se descargan con `curl`. Aun así, Reddit limita a ~1
+  petición por minuto por IP, así que entre los dos subreddits se espera 62 s.
+  En GitHub Actions (IPs compartidas) puede fallar igualmente.
+
+
+--------------------------------------------------------------------------------
+4. LA FUENTE DE DATOS OFICIALES: API DE BRICKSET
+--------------------------------------------------------------------------------
+
+Se usa para lo que los RSS no pueden dar: datos verificados por set.
+
+  URL base: https://brickset.com/api/v3.asmx
+  Requiere: BRICKSET_API_KEY (gratuita, en brickset.com/tools/webservices)
+  Sin key: todo funciona igual, pero con los precios de config.py
+
+  DETALLE IMPORTANTE DE LA API:
+    - El parámetro setNumber EXIGE el sufijo "-1" ("75192-1"). Sin él devuelve
+      "success" con 0 sets: un fallo silencioso.
+
+  QUÉ DEVUELVE (verificado):
+    [OK]   PVP oficial por país  -> LEGOCom["DE"]["retailPrice"] (proxy del PVP €)
+    [OK]   Fecha de retirada     -> exitDate ("2026-12-31")
+    [OK]   Metadatos             -> piezas, minifigs, temática, rating
+    [NO]   Precios de mercado    -> NO los publica. Ni BrickLink ni Amazon.
+
+  Consecuencia: el PVP y la fecha de retirada son datos reales; el precio de
+  REVENTA sigue siendo una estimación manual de config.py.
+
+
+--------------------------------------------------------------------------------
+5. CALENDARIO DE RETIRADAS (EoL)
+--------------------------------------------------------------------------------
+
+Consulta Brickset por combinaciones de tema + año (la API no permite filtrar
+por fecha de retirada, se filtra en local).
+
+  TEMAS CONSULTADOS (10):
+    Star Wars, Creator Expert, Icons, Ideas, Technic, Harry Potter,
+    Marvel Super Heroes, Disney, Super Mario, Ninjago
+
+  AÑOS CONSULTADOS: 2023, 2024, 2025
+  HORIZONTE: 24 meses hacia delante
+  CONSULTAS: ~30 peticiones HTTP
+
+  RESULTADO REAL: 173 sets con retirada prevista.
+    - 114 se retiran en dic 2026 (a ~50 días)
+    -  44 se retiran en dic 2027
+    -  15 se retiran en jul 2027
+    - 172 de 173 tienen PVP conocido
+
+  POR QUÉ IMPORTA: un set gana valor cuando deja de fabricarse. La fecha de
+  retirada es la señal de compra: antes del EoL, con descuento; vender después.
+
+  LÍMITE: la cobertura de exitDate es del ~50-60 % según tema. No es un censo.
+
+
+--------------------------------------------------------------------------------
+6. QUÉ SETS SE VIGILAN (WATCHLIST)
+--------------------------------------------------------------------------------
+
+28 sets en config.py, con precios y estado corregidos contra Brickset.
+
+  REF     NOMBRE                              TEMÁTICA            PVP €
+  ------  ----------------------------------  ------------------  -------
+  Star Wars / UCS
+  75192   Millennium Falcon UCS               Star Wars UCS       849,99
+  75252   Imperial Star Destroyer UCS         Star Wars UCS       699,99
+  75257   Millennium Falcon (episodio IX)     Star Wars           169,99
+  75309   Republic Gunship UCS                Star Wars UCS       399,99
+  10188   Death Star                          Star Wars           419,99
+
+  Modular Buildings
+  10255   Assembly Square                     Modular             299,99
+  10260   Downtown Diner                      Modular             (retirado)
+  10276   Coliseo (Colosseum)                 Modular             549,99
+  10294   Titanic                             Modular             679,99
+  10297   Boutique Hotel                      Modular             229,99
+
+  Icons / Ideas / Cine
+  10300   Delorean (Back to the Future)       Icons               199,99
+  10306   Atari 2600                          Icons               239,99
+  10295   Porsche 911                         Icons               169,99
+  10271   Fiat 500                            Icons                79,99
+  10274   Ecto-1 (Cazafantasmas)              Icons               239,99
+  21319   Central Perk (Friends)              Ideas                79,99
+  21318   Tree House                          Ideas               249,99
+  21322   Barracuda Bay (Piratas)             Ideas               249,99
+  21330   Home Alone                          Ideas               299,99
+  21375   Godzilla                            Ideas               399,99
+  71043   Hogwarts Castle                     Harry Potter        469,99
+  76391   Hogwarts Icons                      Harry Potter        299,99
+  71374   Nintendo Entertainment System       Ideas/Gaming        269,99
+
+  Technic / Disney / Otros
+  42115   Lamborghini Sián FKP 37             Technic Ultimate    449,99
+  42083   Bugatti Chiron                      Technic Ultimate    369,99
+  42100   Liebherr R 9800                     Technic             (retirado)
+  10307   Torre Eiffel                        Icons               629,99
+  43179   Mickey & Minnie Mouse               Disney              (retirado)
+  10303   Loop Coaster                        Icons               399,99
+  10276   (ver arriba)
+
+  CAMPOS DE CADA SET:
+    referencia              : número de set (clave única)
+    nombre                  : nombre comercial
+    tematica                : nicho (UCS, Modular, Ideas...)
+    precio_oficial          : PVP en euros (verificado con Brickset)
+    precio_objetivo_compra  : precio máximo al que comprarías
+    precio_estimado_reventa : valor estimado tras la retirada  <-- NO VERIFICADO
+    estado_eol              : Retirado | Próximo EoL | Activo
+    piezas                  : número de piezas
+    minifiguras_exclusivas  : incluye minifigs únicas (bool)
+    publico_adulto_afol     : enfocado a adultos 18+ (bool)
+
+  Se puede ampliar sin tocar config.py creando watchlist.json (se fusiona).
+
+
+--------------------------------------------------------------------------------
+7. CRITERIOS DE FILTRADO — EL "FILTRO DUAL"
+--------------------------------------------------------------------------------
+
+Una entrada debe superar TODOS estos filtros para convertirse en oportunidad.
+
+  A) CONTEXTO LEGO (obligatorio)
+     El texto debe contener "lego", "brick" o "minifig".
+     Evita falsos positivos como confundir el set NES (71374) con una oferta
+     de videojuegos de "Nintendo Switch".
+
+  B) CRITERIOS DE COLECCIONISTA (mínimo 1 de 3 puntos)
+     - Público adulto AFOL (18+, UCS, Icons)        -> 1 punto
+     - Volumen alto: >= 1.000 piezas                -> 1 punto
+     - Minifiguras exclusivas                       -> 1 punto
+     Con 1 punto ya pasa (antes eran 2).
+
+  C) VIGENCIA DE LA SEÑAL
+     - Entradas de tipo "ofertas": máximo 45 días de antigüedad
+     - Entradas de tipo noticias/EoL: máximo 365 días
+
+  D) PRECIO CREÍBLE Y ANTI-MSRP (regla estricta)
+     El precio detectado debe cumplir DOS condiciones:
+       - Ser mayor o igual al 10 % del PVP (por debajo se asume error de regex:
+         cuota de sorteo, cupón, pieza suelta).
+       - Ser ESTRICTAMENTE inferior al PVP con al menos un 5 % de descuento.
+     Un blog que anuncia un lanzamiento cita el PVP oficial; ese precio NO es
+     una oportunidad, es el precio de salida. Por debajo del 5 % de descuento
+     se considera ruido de redondeo.
+
+  D2) ENTRADAS SIN PRECIO (descartar_sin_precio = True)
+     Si una entrada solo cita sets y no aporta ningún importe real con
+     descuento, es una noticia (lanzamiento, rumor, EoL). Se descarta y NO
+     genera "señal_vigilancia". Esto evita que la tabla se llene de sets a
+     precio objetivo que parecen oportunidades sin serlo.
+
+  E) CONFIANZA DE CRUCE (mínimo 25 sobre 100)
+     Mide cuánto creemos que el texto habla DE ESE set:
+       - Referencia numérica en el título        -> 95
+       - Referencia numérica en el cuerpo        -> 75
+       - Solo coincidencia por nombre en título  -> 70
+       - Solo coincidencia por nombre            -> 50
+       +10 si hay lenguaje de oferta
+       +10 si aparece "oferta/chollo/deal"
+       +5  si la fuente es de tipo "ofertas"
+
+  F) UMBRALES FINANCIEROS
+     - ROI neto mínimo: 25 %
+     - Beneficio neto mínimo: 10 €
+
+  G) SCORE TOTAL mínimo: 30 sobre 100
+
+  NOTA: los umbrales de score están BAJOS a propósito. El score sirve para
+  ORDENAR la tabla, no para esconder resultados.
+
+
+--------------------------------------------------------------------------------
+8. CÁLCULO FINANCIERO
+--------------------------------------------------------------------------------
+
+  FÓRMULAS (configurables en FINANZAS):
+    gastos_plataforma = precio_venta x 10 %
+    gastos_envio      = precio_venta x 5 %
+    coste_total       = precio_compra + gastos_plataforma + gastos_envio
+    ingresos_netos    = precio_venta - gastos_plataforma - gastos_envio
+    beneficio_neto    = ingresos_netos - precio_compra
+    roi_pct           = beneficio_neto / coste_total x 100
+
+  PLAZO DE REVENTA ESTIMADO (según estado del set):
+    - Retirado / EoL   ->  1 mes   (mercado escaso, giro rápido)
+    - Próximo EoL      ->  6 meses
+    - Activo           -> 18 meses (esperar a la retirada)
+
+  MARGEN MENSUAL = ROI / meses de tenencia
+    Permite comparar un giro rápido del 40 % con una tenencia de 18 meses al 80 %.
+
+  AVISO IMPORTANTE: el precio de reventa NO está verificado (Brickset no lo
+  publica). El campo plan_reventa.valor_verificado = false lo indica, y en la
+  tabla aparece marcado con "⚠".
+
+
+--------------------------------------------------------------------------------
+9. PUNTUACIÓN (SCORE 0-100)
+--------------------------------------------------------------------------------
+
+  Componente            Peso   Cómo se calcula
+  --------------------  -----  ---------------------------------------------
+  Calidad coleccionista   30   (puntos/3) x 30
+  Confianza de cruce      25   (confianza/100) x 25
+  ROI                     25   ROI/150 x 25 (150 % = puntuación plena)
+  Fiabilidad de fuente    10   valor_eur x 10
+  Frescura                10   según días de antigüedad
+  Bonus objetivo          +5   si el precio <= objetivo de compra
+  --------------------  -----
+  MÁXIMO                 105
+
+  ORDENACIÓN FINAL: score + (margen_mensual x 0,5), de mayor a menor.
+  Se deduplica por set: solo la mejor entrada de cada referencia.
+
+
+--------------------------------------------------------------------------------
+10. TIPOS DE RESULTADO
+--------------------------------------------------------------------------------
+
+  "chollo"            -> se encontró un precio real en una fuente
+  "señal_vigilancia"  -> set interesante SIN oferta activa; el precio de
+                         compra es el objetivo del usuario, no un precio real
+
+  En la práctica, casi todos los resultados actuales son "señal_vigilancia".
+
+
+--------------------------------------------------------------------------------
+11. FUNCIONES PRINCIPALES (main.py)
+--------------------------------------------------------------------------------
+
+  RASTREO
+    rastrear_feeds()            Descarga los 6 feeds y aplica pausas por host.
+    _descargar_bytes()          Elige transporte: requests o curl (Reddit).
+    descargar_feed()            Descarga y parsea, con reintentos y backoff.
+    construir_entradas()        Convierte el feed en objetos Entry.
+
+  EXTRACCIÓN
+    extraer_precios()           Regex multilingüe: "599,99 €", "€599.99",
+                                "EUR 84.99", "84.99€", "599 euros".
+                                Distingue si el precio es oferta o PVP.
+    extraer_referencias()       Detecta números de set (4-6 dígitos, excluye años).
+    detectar_referencias_meta() Cruza referencias y alias con la watchlist.
+
+  EVALUACIÓN
+    evaluar_coleccionista()     Puntúa 0-3 (AFOL, piezas, minifigs exclusivas).
+    confianza_cruce()           Calcula 0-100 de que hable de ese set.
+    elegir_precio_compra()      Decide qué precio usar como precio de compra.
+    calcular_financiero()       Gastos, beneficio neto y ROI.
+    calcular_score()            Score compuesto 0-100.
+    evaluar_oportunidades()     Aplica el filtro dual completo.
+
+  EXPORTACIÓN
+    estimar_reventa()           Plazo y precio de venta sugerido.
+    serializar_candidate()      Convierte a dict para el JSON.
+    actualizar_historico()      Acumula sin duplicar.
+    _ordenar_y_ranquear()       Ordena por interés y deduplica por set.
+    escribir_json_atomico()     Escritura segura (nunca deja JSON a medias).
+    escribir_csv()              CSV con ";" y BOM UTF-8 para Excel.
+    escribir_reporte_md()       Reporte legible con tablas.
+
+  CALENDARIO
+    construir_calendario()      (calendario.py) Sets que se retiran y cuándo.
+    BricksetClient.datos()      (brickset.py) Datos oficiales de un set.
+
+
+--------------------------------------------------------------------------------
+12. COMANDOS DISPONIBLES
+--------------------------------------------------------------------------------
+
+  python main.py                    Escaneo completo (publica JSON + CSV + MD)
+  python main.py --dry-run          Escaneo sin escribir ficheros
+  python main.py --simulate         Sin red, datos de ejemplo
+  python main.py --tabla            Ver ranking del JSON (sin red)
+  python main.py --tabla --top 10   Ver solo los 10 primeros
+  python main.py --tabla --csv x.csv  Exportar a CSV sin rastrear
+  python main.py --eol              Calendario de retiradas
+  python main.py --eol --top 20     Los 20 más caros que se retiran
+  python main.py --only-feeds X     Solo fuentes que contengan X
+  python main.py --sin-brickset     Ignorar la API de Brickset
+  python main.py -v                 Log detallado (por qué se descarta cada cosa)
+
+
+--------------------------------------------------------------------------------
+13. DÓNDE SE PUBLICAN LOS RESULTADOS
+--------------------------------------------------------------------------------
+
+  Local:
+    opportunities.json                          Datos completos
+    reports/reporte_YYYY-MM-DD.md               Reporte legible
+    reports/oportunidades_YYYY-MM-DD.csv        Tabla para Excel
+
+  GitHub (rama runtime-data):
+    https://raw.githubusercontent.com/mpinartr/LegoSearch/runtime-data/opportunities.json
+    https://raw.githubusercontent.com/mpinartr/LegoSearch/runtime-data/oportunidades.csv
+
+  AVISO: raw.githubusercontent.com cachea ~1 minuto tras cada escaneo.
+  Para lectura siempre fresca, usar la API de GitHub:
+    https://api.github.com/repos/mpinartr/LegoSearch/contents/opportunities.json?ref=runtime-data
+    (con cabecera: Accept: application/vnd.github.raw)
+
+  ESTADO ACTUAL: el escaneo automático cada 6 h está DESACTIVADO. El workflow
+  solo se lanza a mano (workflow_dispatch).
+
+
+--------------------------------------------------------------------------------
+14. LÍMITES CONOCIDOS Y TAREAS PENDIENTES
+--------------------------------------------------------------------------------
+
+  1. NO HAY FUENTE DE CHOLLOS REALES
+     Los feeds son de noticias. De 165 entradas, solo ~5 traen precio y casi
+     siempre es el PVP de un lanzamiento. Esta es la limitación de fondo.
+     Mitigado con la regla anti-MSRP: ahora esas entradas se descartan en vez
+     de entrar como oportunidad. Consecuencia esperada: muchas ejecuciones
+     devuelven 0 oportunidades. Eso es correcto, no un fallo.
+
+  2. EL PRECIO DE REVENTA NO ESTÁ VERIFICADO
+     Es una estimación manual. Brickset no publica precios de mercado.
+     Todo el ROI depende de ese número.
+     Siguiente paso propuesto: API de BrickLink (requiere OAuth 1.0a). Estaba
+     en mantenimiento cuando se intentó; sin verificar.
+
+  3. REDDIT ES POCO FIABLE
+     Límite de ~1 petición/minuto por IP. En GitHub Actions probablemente falle.
+
+  4. CHOLLOMETRO ES ROTATIVO
+     El feed de novedades trae LEGO de forma intermitente (0 a 2 menciones).
+
+  5. COBERTURA EoL DEL 50-60 %
+     No todos los sets tienen fecha de retirada publicada.
+
+  6. CORREGIDO RECIENTEMENTE
+     - 24 sets tenían PVP y estado EoL equivocados en config.py
+     - El JSON publicado iba una ejecución por detrás (bug de git checkout)
+     - Reddit daba 429 al 100 % de las peticiones
+
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================
