@@ -1685,22 +1685,35 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
                              "Pensado para Docker/Railway. También se activa con LOOP_MODE=1.")
     parser.add_argument("--interval", type=float, default=None, metavar="MIN",
                         help="Minutos entre escaneos en modo --loop "
-                             "(por defecto: SCAN_INTERVAL_MINUTES o 360).")
+                             "(por defecto: LEGO_REVISION_MINUTOS, "
+                             "SCAN_INTERVAL_MINUTES o 360).")
     return parser.parse_args(argv)
 
 
 def _segundos_intervalo(args: argparse.Namespace) -> int:
-    """Resuelve el intervalo entre escaneos: CLI > env > defecto (6 h)."""
+    """Resuelve el intervalo entre escaneos.
+
+    Prioridad: ``--interval`` (CLI) > ``LEGO_REVISION_MINUTOS`` >
+    ``SCAN_INTERVAL_MINUTES`` > 360 min (6 h).
+
+    ``LEGO_REVISION_MINUTOS`` es el nombre canónico; ``SCAN_INTERVAL_MINUTES``
+    se mantiene para no romper despliegues ya configurados.
+    """
     if args.interval is not None and args.interval > 0:
         return int(args.interval * 60)
-    env = os.environ.get("SCAN_INTERVAL_MINUTES")
-    if env:
+
+    for nombre in ("LEGO_REVISION_MINUTOS", "SCAN_INTERVAL_MINUTES"):
+        env = os.environ.get(nombre)
+        if not env or not env.strip():
+            continue
         try:
             minutos = float(env)
             if minutos > 0:
                 return int(minutos * 60)
+            log.warning("%s=%r debe ser mayor que 0; se ignora.", nombre, env)
         except ValueError:
-            log.warning("SCAN_INTERVAL_MINUTES=%r no es un número; se usa 360.", env)
+            log.warning("%s=%r no es un número; se ignora.", nombre, env)
+
     return 360 * 60
 
 
@@ -1740,6 +1753,11 @@ def modo_loop(args: argparse.Namespace) -> int:
             codigo = ejecutar(args)
             if codigo != 0:
                 log.warning("Ciclo #%d terminó con código %d.", ciclo, codigo)
+        except (requests.RequestException, TimeoutError, OSError) as exc:
+            # Red caída, DNS, timeout, TLS... lo normal en un contenedor. No es
+            # un bug: se avisa sin traceback y se reintenta en la próxima ronda.
+            log.warning("Ciclo #%d falló por red (%s: %s); reintento más tarde.",
+                        ciclo, type(exc).__name__, exc)
         except Exception:  # noqa: BLE001 — un ciclo roto no debe tumbar el worker
             log.exception("Ciclo #%d falló; continúo con el siguiente.", ciclo)
 

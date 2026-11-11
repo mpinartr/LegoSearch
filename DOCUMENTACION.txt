@@ -443,15 +443,20 @@ Una entrada debe superar TODOS estos filtros para convertirse en oportunidad.
   VARIABLES DE ENTORNO
     BRICKSET_API_KEY          Obligatoria para PVP y fechas de retirada.
     LOOP_MODE                 1 = proceso continuo; 0/vacío = una pasada.
-    SCAN_INTERVAL_MINUTES     Minutos entre escaneos (defecto 360 = 6 h).
+    LEGO_REVISION_MINUTOS     Minutos entre escaneos (defecto 360 = 6 h).
+    SCAN_INTERVAL_MINUTES     Alias antiguo; se acepta si la anterior no está.
     LEGOSEARCH_OUTPUT         Ruta del JSON (en Docker: /app/data/...).
     TZ                        Europe/Madrid (en la imagen ya viene puesto).
 
   PRIORIDAD DEL INTERVALO
-    --interval (CLI)  >  SCAN_INTERVAL_MINUTES  >  360 min
+    --interval (CLI)  >  LEGO_REVISION_MINUTOS  >  SCAN_INTERVAL_MINUTES
+                      >  360 min
 
   COMPORTAMIENTO DEL WORKER
     - Un ciclo que falla se registra y se sigue; el proceso no muere.
+    - Fallos de red (requests.RequestException, TimeoutError, OSError) se
+      registran como AVISO sin traceback: son transitorios y esperados.
+      Cualquier otra excepción se registra como ERROR con traceback completo.
     - SIGTERM/SIGINT (lo que manda Railway al redesplegar) corta la espera al
       instante y sale con código 0 para no provocar reinicios en bucle.
     - Jitter de hasta 5 % en la espera, para no golpear los feeds siempre a

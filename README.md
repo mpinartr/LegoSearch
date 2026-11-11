@@ -395,7 +395,7 @@ continuo en un contenedor.
 
 ```bash
 # Local
-LOOP_MODE=1 SCAN_INTERVAL_MINUTES=360 python main.py --loop
+LOOP_MODE=1 LEGO_REVISION_MINUTOS=360 python main.py --loop
 
 # Docker
 docker build -t legosearch .
@@ -410,11 +410,14 @@ docker run --rm legosearch python main.py --once
 |---|---|---|
 | `BRICKSET_API_KEY` | PVP oficial y fechas de retirada | — |
 | `LOOP_MODE` | `1` = proceso continuo | — |
-| `SCAN_INTERVAL_MINUTES` | Minutos entre escaneos | `360` |
+| `LEGO_REVISION_MINUTOS` | Minutos entre escaneos | `360` |
+| `SCAN_INTERVAL_MINUTES` | Alias antiguo (se acepta) | — |
 | `LEGOSEARCH_OUTPUT` | Ruta del JSON histórico | `opportunities.json` |
 
-El worker no se cae si un ciclo falla, y corta la espera al recibir `SIGTERM`
-(lo que manda Railway al redesplegar) saliendo con código 0.
+El worker no se cae si un ciclo falla: los errores de red se registran como
+aviso (sin traceback) y cualquier otro error como `ERROR`, y en ambos casos
+sigue con la siguiente ronda. Corta la espera al recibir `SIGTERM` (lo que
+manda Railway al redesplegar) saliendo con código 0.
 
 > **Monta `/app/data` como volumen**: si no, cada redespliegue borra el
 > histórico y se pierden los suelos de precio acumulados.

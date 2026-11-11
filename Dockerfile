@@ -4,7 +4,7 @@
 # (--loop): escanea, guarda el histórico y espera el siguiente intervalo.
 #
 #   docker build -t legosearch .
-#   docker run -e BRICKSET_API_KEY=xxx -e SCAN_INTERVAL_MINUTES=360 legosearch
+#   docker run -e BRICKSET_API_KEY=xxx -e LEGO_REVISION_MINUTOS=360 legosearch
 #
 # Para una ejecución única (cron externo, CI...):
 #   docker run legosearch python main.py --once
@@ -22,7 +22,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     TZ=Europe/Madrid \
     LOOP_MODE=1 \
-    SCAN_INTERVAL_MINUTES=360
+    LEGO_REVISION_MINUTOS=360
 
 WORKDIR /app
 
