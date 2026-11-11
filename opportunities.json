@@ -4,17 +4,17 @@
     "name": "LegoSearch",
     "version": "1.0.0"
   },
-  "generado_en": "2026-11-11T07:22:42+00:00",
+  "generado_en": "2026-11-11T11:09:49+00:00",
   "resumen": {
     "sets_en_watchlist": 28,
     "entradas_analizadas": 190,
-    "validas": 2,
-    "descartadas": 6,
+    "validas": 0,
+    "descartadas": 8,
     "descartadas_detalle": [
       {
         "referencia": "10297",
         "set": "Boutique Hotel (Modular)",
-        "motivo": "sin precio detectado ni señal de oferta",
+        "motivo": "sin oferta real (precio = PVP o sin importe)",
         "titular": "Best modular building: Quarter final bout 2",
         "fuente": "Brickset News",
         "url": "https://brickset.com/article/136039"
@@ -22,7 +22,7 @@
       {
         "referencia": "10260",
         "set": "Downtown Diner (Modular)",
-        "motivo": "sin precio detectado ni señal de oferta",
+        "motivo": "sin oferta real (precio = PVP o sin importe)",
         "titular": "Best modular building: Quarter final bout 1",
         "fuente": "Brickset News",
         "url": "https://brickset.com/article/136037"
@@ -30,7 +30,7 @@
       {
         "referencia": "10255",
         "set": "Assembly Square (Modular)",
-        "motivo": "sin precio detectado ni señal de oferta",
+        "motivo": "sin oferta real (precio = PVP o sin importe)",
         "titular": "Which is the best modular building?",
         "fuente": "Brickset News",
         "url": "https://brickset.com/article/135979"
@@ -38,7 +38,7 @@
       {
         "referencia": "10260",
         "set": "Downtown Diner (Modular)",
-        "motivo": "sin precio detectado ni señal de oferta",
+        "motivo": "sin oferta real (precio = PVP o sin importe)",
         "titular": "Which is the best modular building?",
         "fuente": "Brickset News",
         "url": "https://brickset.com/article/135979"
@@ -46,7 +46,7 @@
       {
         "referencia": "10297",
         "set": "Boutique Hotel (Modular)",
-        "motivo": "sin precio detectado ni señal de oferta",
+        "motivo": "sin oferta real (precio = PVP o sin importe)",
         "titular": "Which is the best modular building?",
         "fuente": "Brickset News",
         "url": "https://brickset.com/article/135979"
@@ -54,20 +54,33 @@
       {
         "referencia": "71374",
         "set": "Nintendo Entertainment System",
-        "motivo": "sin precio detectado ni señal de oferta",
+        "motivo": "sin oferta real (precio = PVP o sin importe)",
         "titular": "Nintendo teases next LEGO Super Mario 18+ set – are we done with Mario Kart?",
         "fuente": "Brick Fanatics",
         "url": "https://www.brickfanatics.com/nintendo-teases-next-lego-super-mario-18-set"
+      },
+      {
+        "referencia": "10188",
+        "set": "Death Star",
+        "motivo": "sin oferta real (precio = PVP o sin importe)",
+        "titular": "LEGO Black Pearl, Death Star and more hit Black Friday sale",
+        "fuente": "Brick Fanatics",
+        "url": "https://www.brickfanatics.com/lego-black-pearl-death-star-hit-black-friday-sale"
+      },
+      {
+        "referencia": "75192",
+        "set": "Millennium Falcon UCS",
+        "motivo": "sin oferta real (precio = PVP o sin importe)",
+        "titular": "Buy LEGO Star Wars Millennium Falcon Collector Series Set 75192 | LEGO | Argos",
+        "fuente": "Reddit r/legodeals",
+        "url": "https://www.reddit.com/r/legodeals/comments/1xs3n6t/buy_lego_star_wars_millennium_falcon_collector/"
       }
     ],
-    "duracion_segundos": 75.8,
-    "total_historicas": 2,
-    "nuevas_en_esta_ejecucion": 2,
+    "duracion_segundos": 78.03,
+    "total_historicas": 0,
+    "nuevas_en_esta_ejecucion": 0,
     "duplicadas_ignoradas": 0,
-    "temas": {
-      "Star Wars": 1,
-      "Star Wars UCS": 1
-    }
+    "temas": {}
   },
   "estado_feeds": [
     {
@@ -101,124 +114,8 @@
       "entradas": 30
     }
   ],
-  "oportunidades": [
-    {
-      "id": "470d4128620f063c",
-      "schema_version": "1.0",
-      "ranking": 1,
-      "tipo": "señal_vigilancia",
-      "referencia": "10188",
-      "nombre": "Death Star",
-      "tematica": "Star Wars",
-      "estado_eol": "Retirado",
-      "score_total": 92.1,
-      "confianza_cruce": 80,
-      "criterios_coleccionista": {
-        "score": 3,
-        "max": 3,
-        "detalle": "AFOL + 3,803 piezas + minifiguras exclusivas",
-        "piezas": 3803,
-        "minifiguras_exclusivas": true,
-        "publico_adulto_afol": true
-      },
-      "precios": {
-        "oficial": 419.99,
-        "objetivo_compra": 295.0,
-        "estimado_reventa": 1100.0,
-        "detectado": null,
-        "detectado_texto": null,
-        "compra": 295.0,
-        "origen": "precio_objetivo_compra",
-        "descuento_vs_pvp_pct": 29.76,
-        "excede_objetivo": false
-      },
-      "financiero": {
-        "precio_compra": 295.0,
-        "gastos_plataforma": 110.0,
-        "gastos_envio": 55.0,
-        "coste_total": 460.0,
-        "ingresos_netos": 935.0,
-        "beneficio_neto": 640.0,
-        "roi_pct": 139.13,
-        "margen_mensual_pct": 139.13
-      },
-      "plan_reventa": {
-        "precio_venta_sugerido": 1045.0,
-        "plazo_reventa_meses": 1,
-        "tipo_operacion": "giro_rápido",
-        "valor_verificado": false,
-        "horizonte": "~1 mes(es) — reventa tras la retirada, mercado escaso"
-      },
-      "fuente": {
-        "nombre": "Brick Fanatics",
-        "tipo": "eol",
-        "titulo": "LEGO Black Pearl, Death Star and more hit Black Friday sale",
-        "url": "https://www.brickfanatics.com/lego-black-pearl-death-star-hit-black-friday-sale",
-        "fecha": "2026-11-09T09:16:10+00:00",
-        "antiguedad_dias": 1.9
-      },
-      "detectada_en": "2026-11-11T07:23:58+00:00",
-      "notas_set": "Clásico ya retirado: solo se compra en segunda mano, reventa muy alta."
-    },
-    {
-      "id": "c012bcaf0d1dcee7",
-      "schema_version": "1.0",
-      "ranking": 2,
-      "tipo": "señal_vigilancia",
-      "referencia": "75192",
-      "nombre": "Millennium Falcon UCS",
-      "tematica": "Star Wars UCS",
-      "estado_eol": "Próximo EoL",
-      "score_total": 83.0,
-      "confianza_cruce": 100,
-      "criterios_coleccionista": {
-        "score": 3,
-        "max": 3,
-        "detalle": "AFOL + 7,541 piezas + minifiguras exclusivas",
-        "piezas": 7541,
-        "minifiguras_exclusivas": true,
-        "publico_adulto_afol": true
-      },
-      "precios": {
-        "oficial": 849.99,
-        "objetivo_compra": 595.0,
-        "estimado_reventa": 1150.0,
-        "detectado": null,
-        "detectado_texto": null,
-        "compra": 595.0,
-        "origen": "precio_objetivo_compra",
-        "descuento_vs_pvp_pct": 30.0,
-        "excede_objetivo": false
-      },
-      "financiero": {
-        "precio_compra": 595.0,
-        "gastos_plataforma": 115.0,
-        "gastos_envio": 57.5,
-        "coste_total": 767.5,
-        "ingresos_netos": 977.5,
-        "beneficio_neto": 382.5,
-        "roi_pct": 49.84,
-        "margen_mensual_pct": 8.31
-      },
-      "plan_reventa": {
-        "precio_venta_sugerido": 1092.5,
-        "plazo_reventa_meses": 6,
-        "tipo_operacion": "tenencia",
-        "valor_verificado": false,
-        "horizonte": "~6 mes(es) — mantiene valor y captura la subida del EoL"
-      },
-      "fuente": {
-        "nombre": "Reddit r/legodeals",
-        "tipo": "ofertas",
-        "titulo": "Buy LEGO Star Wars Millennium Falcon Collector Series Set 75192 | LEGO | Argos",
-        "url": "https://www.reddit.com/r/legodeals/comments/1xs3n6t/buy_lego_star_wars_millennium_falcon_collector/",
-        "fecha": "2026-11-09T21:01:51+00:00",
-        "antiguedad_dias": 1.4
-      },
-      "detectada_en": "2026-11-11T07:23:58+00:00",
-      "notas_set": "El set más reconocible de Star Wars UCS; altísima liquidez en reventa."
-    }
-  ],
+  "suelos_historicos": {},
+  "oportunidades": [],
   "calendario_eol": [
     {
       "referencia": "75367",
