@@ -1207,6 +1207,21 @@ def escribir_reporte_md(ruta: Path, datos: dict, nuevas: list[dict]) -> None:
             f"- Enlace: {o['fuente']['url']}",
             "",
         ]
+
+    # Calendario EoL: lo más accionable del reporte para un revendedor.
+    calendario = datos.get("calendario_eol") or []
+    if calendario:
+        from calendario import tabla_calendario
+        lineas += [
+            "## Calendario de retiradas (EoL)",
+            "",
+            "_Sets que dejan de fabricarse en los próximos meses. "
+            "Es la señal de compra: el valor sube tras la retirada._",
+            "",
+            tabla_calendario(calendario),
+            "",
+        ]
+
     ruta.write_text("\n".join(lineas) + "\n", encoding="utf-8")
 
 
@@ -1267,10 +1282,60 @@ def entradas_simuladas() -> list[Entry]:
 # ---------------------------------------------------------------------------
 
 
+def _calendario_si_activo(args: argparse.Namespace) -> list[dict]:
+    """Construye el calendario EoL si hay key y está activado en config.
+
+    No es crítico: cualquier fallo se registra y el escaneo continúa sin él.
+    """
+    conf = getattr(cfg, "CALENDARIO_EOL", {})
+    if not conf.get("activo") or getattr(args, "sin_brickset", False):
+        return []
+    api_key = os.environ.get("BRICKSET_API_KEY")
+    if not api_key:
+        return []
+
+    try:
+        from calendario import construir_calendario
+        return construir_calendario(
+            api_key,
+            temas=conf["temas"],
+            años=conf["años"],
+            meses_horizonte=conf["meses_horizonte"],
+        )
+    except Exception as exc:  # noqa: BLE001 — el calendario es opcional
+        log.warning("Calendario EoL omitido (%s)", type(exc).__name__)
+        return []
+
+
 def ejecutar(args: argparse.Namespace) -> int:
     """Orquesta el flujo completo. Devuelve el código de salida."""
     inicio = time.time()
     marca_tiempo = ahora_iso()
+
+    # Modo calendario: qué sets dejan de fabricarse y cuándo.
+    if getattr(args, "eol", False):
+        api_key = os.environ.get("BRICKSET_API_KEY")
+        if not api_key:
+            log.error("--eol requiere BRICKSET_API_KEY (exporta el .env antes).")
+            return 2
+        from calendario import construir_calendario, tabla_calendario
+
+        conf = cfg.CALENDARIO_EOL
+        sets = construir_calendario(
+            api_key,
+            temas=conf["temas"],
+            años=conf["años"],
+            meses_horizonte=conf["meses_horizonte"],
+        )
+        if args.top:
+            # Con --top mostramos los más caros: el interés para revender
+            # correlaciona con el PVP, no con la inminencia de la retirada.
+            sets = sorted(
+                [s for s in sets if s.get("pvp_eur")],
+                key=lambda s: -s["pvp_eur"],
+            )[: args.top]
+        print(tabla_calendario(sets))
+        return 0
 
     # Modo lectura: mostrar el ranking ya publicado, sin rastrear nada.
     if getattr(args, "tabla", False):
@@ -1343,6 +1408,13 @@ def ejecutar(args: argparse.Namespace) -> int:
     historico = cargar_historico(salida)
     datos, ids_nuevos = actualizar_historico(historico, nuevas, estado_feeds,
                                              resumen, marca_tiempo)
+
+    # Calendario EoL: se añade al JSON para que el bot pueda avisar de las
+    # retiradas próximas sin tener que consultar Brickset por su cuenta.
+    calendario = _calendario_si_activo(args)
+    if calendario:
+        datos["calendario_eol"] = calendario
+
     escribir_json_atomico(salida, datos)
     log.info("Exportado: %s (%d nuevas, %d totales)", salida,
              datos["resumen"]["nuevas_en_esta_ejecucion"],
@@ -1380,6 +1452,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
                         help="Muestra el ranking del JSON existente y sale (sin red).")
     parser.add_argument("--sin-brickset", action="store_true",
                         help="No consulta la API de Brickset aunque haya API key.")
+    parser.add_argument("--eol", action="store_true",
+                        help="Muestra el calendario de retiradas y sale (requiere Brickset).")
     parser.add_argument("--verbose", "-v", action="store_true", help="Log detallado.")
     return parser.parse_args(argv)
 

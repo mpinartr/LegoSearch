@@ -151,6 +151,36 @@ FEEDS = [
 ]
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# 4b. CALENDARIO DE RETIRADAS (EoL) — datos de Brickset
+# ---------------------------------------------------------------------------
+# Brickset publica `exitDate` por set: la fecha en que LEGO deja de fabricarlo.
+# Es la señal clave para un revendedor: el valor de reventa sube justo después.
+#
+# ``temas``: temas de Brickset tal como los nombra la API (no los de la
+#   watchlist). Se comprobaron contra la API real.
+# ``años``: año de lanzamiento a consultar. Cada combinación tema+año es una
+#   petición HTTP; mantener la lista corta para no eternizar el escaneo.
+# ``meses_horizonte``: solo se reportan retiradas dentro de esta ventana.
+CALENDARIO_EOL = {
+    "activo": True,
+    "temas": [
+        "Star Wars",
+        "Creator Expert",
+        "Icons",
+        "Ideas",
+        "Technic",
+        "Harry Potter",
+        "Marvel Super Heroes",
+        "Disney",
+        "Super Mario",
+        "Ninjago",
+    ],
+    "años": ["2023", "2024", "2025"],
+    "meses_horizonte": 24,
+}
+
+# ---------------------------------------------------------------------------
 # 5. WATCHLIST AVANZADA (BASE DE DATOS LOCAL)
 # ---------------------------------------------------------------------------
 # Metadatos que buscan inversores/criterios AFOL profesionales:

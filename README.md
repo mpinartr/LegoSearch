@@ -56,6 +56,7 @@ Opciones de CLI:
 | `--top N` | Muestra solo las N mejores oportunidades en la tabla. |
 | `--tabla` | Imprime el ranking del JSON existente y sale (sin red). |
 | `--sin-brickset` | No consulta la API de Brickset aunque haya `BRICKSET_API_KEY`. |
+| `--eol [--top N]` | Calendario de retiradas: qué sets dejan de fabricarse y cuándo. |
 | `--verbose`, `-v` | Log detallado, incluyendo **por qué se descarta** cada candidato. |
 
 ## 3. Configuración (`config.py`)
@@ -279,6 +280,7 @@ el último paso, leer la rama `runtime-data` con el histórico completo.
 LegoSearch/
 ├── config.py                 # Finanzas, filtros, feeds y watchlist
 ├── brickset.py               # Precios reales vía API de Brickset (opcional)
+├── calendario.py             # Calendario de retiradas (EoL) por tema y año
 ├── main.py                   # Motor completo (rastreo → filtro dual → export)
 ├── requirements.txt          # feedparser, requests
 ├── README.md
@@ -325,6 +327,25 @@ python main.py --dry-run    # ahora usa precios de mercado reales
 Sin key, todo funciona igual que antes: el enriquecimiento es opcional y el
 motor nunca falla por no tenerla. En GitHub Actions, añade
 `BRICKSET_API_KEY` (y opcionalmente `BRICKSET_USER_HASH`) como *secret*.
+
+### Calendario de retiradas (EoL)
+
+La misma API da `exitDate`, la fecha en que LEGO deja de fabricar un set.
+Es la señal más accionable para revender: tras la retirada el valor sube.
+
+```bash
+python main.py --eol --top 20    # los 20 más caros que se retiran
+```
+
+Con los 10 temas y 3 años de `CALENDARIO_EOL` son ~30 consultas y devuelve
+~170 sets con retirada en los próximos 24 meses. Los 114 que salen con
+fecha `2026-12-31` son los candidatos inmediatos. También se incluye en
+`opportunities.json` como `calendario_eol`, así el bot puede avisar sin
+consultar Brickset.
+
+La cobertura de `exitDate` es del ~50-60 % según tema, y `exitDate` suele ser
+fin de mes o de año: tómalo como una ventana orientativa, no como un día
+exacto.
 
 ## 8. Licencia
 
