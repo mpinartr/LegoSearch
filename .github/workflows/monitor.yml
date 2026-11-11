@@ -71,6 +71,8 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # Guardamos el CSV del día como stable: URL fija para descargar.
+          CSFECHA="reports/oportunidades_$(date -u +%F).csv"
           # Si la rama ya existe, partimos de ella para acumular histórico.
           if git fetch origin runtime-data; then
             git checkout -f -B runtime-data origin/runtime-data
@@ -80,5 +82,9 @@ jobs:
             git rm -rf --cached .
           fi
           git add -f opportunities.json
+          if [ -f "$CSFECHA" ]; then
+            cp "$CSFECHA" oportunidades.csv
+            git add -f oportunidades.csv
+          fi
           git commit -m "chore: scan $(date -u +%FT%TZ)" || echo "No changes to commit"
           git push origin runtime-data

@@ -42,6 +42,7 @@ Salidas:
 |---|---|
 | `opportunities.json` | Datos estructurados para el agente (histórico acumulado). |
 | `reports/reporte_YYYY-MM-DD.md` | Resumen legible de cada ejecución. |
+| `reports/oportunidades_YYYY-MM-DD.csv` | Ranking en CSV (`;`, BOM UTF-8): se abre en Excel directamente. |
 
 Opciones de CLI:
 
@@ -57,6 +58,7 @@ Opciones de CLI:
 | `--tabla` | Imprime el ranking del JSON existente y sale (sin red). |
 | `--sin-brickset` | No consulta la API de Brickset aunque haya `BRICKSET_API_KEY`. |
 | `--eol [--top N]` | Calendario de retiradas: qué sets dejan de fabricarse y cuándo. |
+| `--csv RUTA` | Exporta el ranking a CSV (con `--tabla`, sin volver a rastrear). |
 | `--verbose`, `-v` | Log detallado, incluyendo **por qué se descarta** cada candidato. |
 
 ## 3. Configuración (`config.py`)

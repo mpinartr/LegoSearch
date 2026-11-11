@@ -29,6 +29,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import html
 import json
@@ -1156,6 +1157,73 @@ def imprimir_tabla(oportunidades: list[dict]) -> None:
         )
 
 
+def escribir_csv(ruta: Path, oportunidades: list[dict],
+                 calendario: list[dict] | None = None) -> None:
+    """Exporta el ranking a CSV, listo para Excel / Google Sheets.
+
+    Separador ``;`` y BOM UTF-8: es lo que Excel en español abre bien por
+    defecto (con ``;`` porque la coma es el separador decimal).
+
+    Si hay calendario EoL, se añade al final como segundo bloque separado
+    por una línea en blanco.
+    """
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    columnas = [
+        ("Ranking", lambda o: o.get("ranking")),
+        ("Tipo", lambda o: o.get("tipo")),
+        ("Referencia", lambda o: o.get("referencia")),
+        ("Nombre", lambda o: o.get("nombre")),
+        ("Temática", lambda o: o.get("tematica")),
+        ("Estado EoL", lambda o: o.get("estado_eol")),
+        ("PVP €", lambda o: o["precios"].get("oficial")),
+        ("Compra €", lambda o: o["precios"].get("compra")),
+        ("Descuento %", lambda o: o["precios"].get("descuento_vs_pvp_pct")),
+        ("Venta €", lambda o: (o.get("plan_reventa") or {}).get("precio_venta_sugerido")),
+        ("Meses tenencia", lambda o: (o.get("plan_reventa") or {}).get("plazo_reventa_meses")),
+        ("Beneficio €", lambda o: o["financiero"].get("beneficio_neto")),
+        ("ROI %", lambda o: o["financiero"].get("roi_pct")),
+        ("%/mes", lambda o: o["financiero"].get("margen_mensual_pct")),
+        ("Score", lambda o: o.get("score_total")),
+        ("Reventa verificada", lambda o: "sí" if (o.get("plan_reventa") or {}).get("valor_verificado") else "no"),
+        ("Fuente", lambda o: (o.get("fuente") or {}).get("nombre")),
+        ("URL", lambda o: (o.get("fuente") or {}).get("url")),
+    ]
+    with ruta.open("w", encoding="utf-8-sig", newline="") as fh:
+        escritor = csv.writer(fh, delimiter=";")
+        escritor.writerow([nombre for nombre, _ in columnas])
+        for o in oportunidades:
+            fila = []
+            for _, fn in columnas:
+                try:
+                    valor = fn(o)
+                except (KeyError, TypeError):
+                    valor = ""
+                # Coma decimal para Excel en español.
+                if isinstance(valor, float):
+                    valor = f"{valor:.2f}".replace(".", ",")
+                fila.append("" if valor is None else valor)
+            escritor.writerow(fila)
+
+        # Segundo bloque: calendario de retiradas (opcional).
+        if calendario:
+            escritor.writerow([])
+            escritor.writerow([])
+            escritor.writerow(["CALENDARIO DE RETIRADAS (EoL)"])
+            escritor.writerow(["Retirada", "Días", "Referencia", "Nombre",
+                               "Temática", "PVP €", "Piezas", "Rating"])
+            for s in calendario:
+                escritor.writerow([
+                    s.get("exit_date", ""),
+                    s.get("dias_para_retirada", ""),
+                    s.get("referencia", ""),
+                    s.get("nombre", ""),
+                    s.get("tematica", ""),
+                    f"{s['pvp_eur']:.2f}".replace(".", ",") if s.get("pvp_eur") else "",
+                    int(s["piezas"]) if s.get("piezas") else "",
+                    f"{s['rating']:.1f}".replace(".", ",") if s.get("rating") else "",
+                ])
+
+
 def escribir_reporte_md(ruta: Path, datos: dict, nuevas: list[dict]) -> None:
     """Reporte legible para lectores humanos (no lo usa el agente).
 
@@ -1348,6 +1416,11 @@ def ejecutar(args: argparse.Namespace) -> int:
         if args.top:
             opps = opps[: args.top]
         print(tabla_oportunidades(opps))
+
+        # --tabla --csv RUTA: exporta sin volver a rastrear feeds.
+        if getattr(args, "csv", None):
+            escribir_csv(Path(args.csv), opps, datos.get("calendario_eol") or [])
+            log.info("CSV exportado: %s (%d filas)", args.csv, len(opps))
         return 0
 
     log.info("LegoSearch v%s (schema %s)", APP_VERSION, SCHEMA_VERSION)
@@ -1428,6 +1501,11 @@ def ejecutar(args: argparse.Namespace) -> int:
         escribir_reporte_md(ruta_md, datos, nuevas_exportadas)
         log.info("Reporte: %s", ruta_md)
 
+        # CSV equivalente, para abrir en Excel sin pasos intermedios.
+        ruta_csv = Path(cfg.BASE_DIR) / "reports" / f"oportunidades_{date.today().isoformat()}.csv"
+        escribir_csv(ruta_csv, datos["oportunidades"], datos.get("calendario_eol") or [])
+        log.info("CSV: %s", ruta_csv)
+
     return 0
 
 
@@ -1454,6 +1532,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
                         help="No consulta la API de Brickset aunque haya API key.")
     parser.add_argument("--eol", action="store_true",
                         help="Muestra el calendario de retiradas y sale (requiere Brickset).")
+    parser.add_argument("--csv", metavar="RUTA", default=None,
+                        help="Exporta además el ranking a CSV (usar con --tabla).")
     parser.add_argument("--verbose", "-v", action="store_true", help="Log detallado.")
     return parser.parse_args(argv)
 
