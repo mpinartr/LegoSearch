@@ -1103,6 +1103,15 @@ def actualizar_historico(existente: dict, nuevas: list[dict],
             fin = op.setdefault("financiero", {})
             fin["margen_mensual_pct"] = round(
                 fin.get("roi_pct", 0) / max(op["plan_reventa"]["plazo_reventa_meses"], 1), 2)
+        # Blindaje del reporte: las tablas leen estos campos con formato numérico
+        # directo, así que una entrada antigua incompleta rompería la impresión
+        # (KeyError) y tumbaría el ciclo entero justo después de exportar.
+        fin = op.setdefault("financiero", {})
+        fin.setdefault("beneficio_neto", 0.0)
+        fin.setdefault("roi_pct", 0.0)
+        precios = op.setdefault("precios", {})
+        precios.setdefault("compra", 0.0)
+        op.setdefault("score_total", 0.0)
 
     histograma_temas: dict[str, int] = {}
     for op in historico:
@@ -1243,7 +1252,7 @@ def tabla_oportunidades(oportunidades: list[dict]) -> str:
     for o in oportunidades:
         f, p = o["financiero"], o["precios"]
         pl = o.get("plan_reventa") or {}
-        venta = pl.get("precio_venta_sugerido", p["estimado_reventa"])
+        venta = pl.get("precio_venta_sugerido") or p.get("estimado_reventa") or 0.0
         plazo = pl.get("plazo_reventa_meses", "?")
         tipo = "🟢 chollo" if o.get("tipo") == "chollo" else "👁️ vigilancia"
         # Una reventa no verificada hace que el ROI sea orientativo, no real.
@@ -1282,7 +1291,7 @@ def imprimir_tabla(oportunidades: list[dict]) -> None:
     for o in oportunidades:
         f, p = o["financiero"], o["precios"]
         pl = o.get("plan_reventa") or {}
-        venta = pl.get("precio_venta_sugerido", p["estimado_reventa"])
+        venta = pl.get("precio_venta_sugerido") or p.get("estimado_reventa") or 0.0
         tipo = "CHL" if o.get("tipo") == "chollo" else "VIG"
         print(
             f"  {o.get('ranking') or '-':>2} {tipo:<6} {o['referencia']:<7} "
