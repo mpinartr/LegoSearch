@@ -14,8 +14,9 @@ FROM python:3.12-slim
 # curl: el transporte alternativo para Reddit (su WAF bloquea el TLS de
 #       requests). Sin curl, r/legodeals devuelve 429 y se pierden ofertas.
 # tzdata: fechas y logs en hora de Madrid, no en UTC.
+# procps: aporta pgrep, que usa el HEALTHCHECK de abajo.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl tzdata \
+    && apt-get install -y --no-install-recommends curl tzdata procps \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \
@@ -38,10 +39,10 @@ RUN useradd --create-home --uid 1000 legosearch \
     && chown -R legosearch:legosearch /app
 USER legosearch
 
-# El histórico vive en /app/data: móntalo como volumen para no perder los
-# suelos históricos al redesplegar.
+# El histórico vive en /app/data. Railway NO acepta la instrucción docker
+# VOLUME (rechaza el build); se crea el volumen desde su panel o con la CLI.
+# En Docker local, móntalo con `-v mi_volumen:/app/data`.
 ENV LEGOSEARCH_OUTPUT=/app/data/opportunities.json
-VOLUME ["/app/data"]
 
 # Comprobación de vida: el proceso debe seguir escuchando señales.
 HEALTHCHECK --interval=5m --timeout=10s --start-period=2m --retries=3 \
