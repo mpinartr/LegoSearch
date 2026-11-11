@@ -10,6 +10,11 @@ para que lo consuma un **superagente externo** (GitHub Actions, LLM, bot propio)
 
 > **Sin notificaciones propias.** LegoSearch no envía Telegram, email ni push:
 > su única salida es un JSON estructurado y un reporte Markdown para humanos.
+>
+> **Motor de escaneo: GitHub Actions.** El superagente de Telegram (otra app)
+> dispara el workflow `monitor.yml` con `workflow_dispatch` y lee el resultado
+> de la rama `runtime-data`. El servicio de Railway está en pausa porque
+> escribe en un volumen privado que el bot no puede ver.
 
 ---
 

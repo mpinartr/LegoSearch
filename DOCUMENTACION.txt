@@ -388,6 +388,18 @@ Una entrada debe superar TODOS estos filtros para convertirse en oportunidad.
     https://api.github.com/repos/mpinartr/LegoSearch/contents/opportunities.json?ref=runtime-data
     (con cabecera: Accept: application/vnd.github.raw)
 
+  MOTOR DE ESCANEO (decisión de arquitectura):
+  El superagente de Telegram vive en otra aplicación de Railway y lee
+  SIEMPRE de la rama runtime-data. Por eso el único motor de escaneo es
+  GitHub Actions (workflow monitor.yml):
+    - El bot lanza el workflow con workflow_dispatch.
+    - GitHub ejecuta el escaneo en su infraestructura (sin coste).
+    - El resultado se commitea a runtime-data y el bot lo lee.
+  El servicio de Railway está en PAUSA: no puede publicar en runtime-data
+  (escribe en un volumen privado) y ya no aporta nada al bot.
+  El worker de Railway sigue disponible como alternativa local o si
+  algún día se quiere un escaneo persistente con volcado a GitHub.
+
   ESTADO ACTUAL: el escaneo automático cada 6 h está DESACTIVADO. El workflow
   solo se lanza a mano (workflow_dispatch).
 

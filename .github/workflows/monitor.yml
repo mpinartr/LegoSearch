@@ -22,6 +22,11 @@ on:
   #
   # Mientras tanto, el escaneo se lanza a mano (desde Actions o desde el
   # superagente vía workflow_dispatch).
+  #
+  # Contrato para el superagente: este workflow es el ÚNICO motor de escaneo.
+  # El bot lo lanza con workflow_dispatch y, cuando termina, lee
+  # https://raw.githubusercontent.com/mpinartr/LegoSearch/runtime-data/opportunities.json
+  # El servicio de Railway queda en pausa para no duplicar el escaneo.
   workflow_dispatch: {}
 
 permissions:
@@ -30,9 +35,10 @@ permissions:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    # 15 min: deja margen para la pausa de 62 s entre subreddits (~2 min) y
-    # las consultas a Brickset con la watchlist completa.
-    timeout-minutes: 15
+    # 20 min: deja margen para la pausa de 62 s entre subreddits (~2 min),
+    # las consultas a Brickset con la watchlist completa y el calendario EoL
+    # (30 consultas). Un ciclo real ronda los 90 s de cómputo más las pausas.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
