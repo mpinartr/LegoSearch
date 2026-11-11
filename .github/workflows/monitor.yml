@@ -12,9 +12,16 @@
 name: monitor-opportunities
 
 on:
-  schedule:
-    # Cada 6 horas (UTC). Ajusta según tu ritmo de revisión.
-    - cron: "15 */6 * * *"
+  # Escaneo automático DESACTIVADO a propósito: LegoSearch todavía no está
+  # validado (ROI sin verificar, pocas oportunidades reales). Ejecuciones cada
+  # 6 h solo acumularían ruido en el histórico.
+  #
+  # Para reactivarlo, descomenta las dos líneas siguientes:
+  # schedule:
+  #   - cron: "15 */6 * * *"
+  #
+  # Mientras tanto, el escaneo se lanza a mano (desde Actions o desde el
+  # superagente vía workflow_dispatch).
   workflow_dispatch: {}
 
 permissions:

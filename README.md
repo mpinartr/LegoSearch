@@ -271,10 +271,23 @@ for o in top:
 jq '.oportunidades[] | select(.financiero.roi_pct > 50) | "\(.referencia) \(.nombre): \(.financiero.beneficio_neto)€"' opportunities.json
 ```
 
-**GitHub Actions (workflow incluido):** `.github/workflows/monitor.yml` ejecuta
-el escaneo cada 6 h y publica `opportunities.json` + `reports/` como artefacto
-`legosearch-data`. El superagente puede descargar el artefacto o, si descomentas
-el último paso, leer la rama `runtime-data` con el histórico completo.
+**GitHub Actions (workflow incluido):** `.github/workflows/monitor.yml` publica
+`opportunities.json` y `oportunidades.csv` en la rama `runtime-data`.
+
+El escaneo automático está **desactivado**: el `schedule` está comentado a
+propósito mientras el ROI sigue sin verificar. Se lanza a mano:
+
+```bash
+# Desde la terminal, con un token con permiso "workflow"
+curl -X POST \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  https://api.github.com/repos/mpinartr/LegoSearch/actions/workflows/monitor.yml/dispatches \
+  -d '{"ref":"main"}'
+```
+
+Para reactivar el escaneo cada 6 h, descomenta el bloque `schedule` en el
+workflow. El superagente puede lanzarlo igual con esa misma petición.
 
 ## 6. Estructura del proyecto
 
