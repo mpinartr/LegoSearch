@@ -4,7 +4,7 @@
     "name": "LegoSearch",
     "version": "1.0.0"
   },
-  "generado_en": "2026-11-11T00:24:48+00:00",
+  "generado_en": "2026-11-11T01:12:06+00:00",
   "resumen": {
     "sets_en_watchlist": 28,
     "entradas_analizadas": 190,
@@ -60,7 +60,7 @@
         "url": "https://www.brickfanatics.com/nintendo-teases-next-lego-super-mario-18-set"
       }
     ],
-    "duracion_segundos": 82.18,
+    "duracion_segundos": 93.38,
     "total_historicas": 2,
     "nuevas_en_esta_ejecucion": 2,
     "duplicadas_ignoradas": 0,
@@ -155,9 +155,9 @@
         "titulo": "LEGO Black Pearl, Death Star and more hit Black Friday sale",
         "url": "https://www.brickfanatics.com/lego-black-pearl-death-star-hit-black-friday-sale",
         "fecha": "2026-11-09T09:16:10+00:00",
-        "antiguedad_dias": 1.6
+        "antiguedad_dias": 1.7
       },
-      "detectada_en": "2026-11-11T00:26:10+00:00",
+      "detectada_en": "2026-11-11T01:13:39+00:00",
       "notas_set": "Clásico ya retirado: solo se compra en segunda mano, reventa muy alta."
     },
     {
@@ -169,7 +169,7 @@
       "nombre": "Millennium Falcon UCS",
       "tematica": "Star Wars UCS",
       "estado_eol": "Próximo EoL",
-      "score_total": 83.1,
+      "score_total": 83.0,
       "confianza_cruce": 100,
       "criterios_coleccionista": {
         "score": 3,
@@ -213,9 +213,9 @@
         "titulo": "Buy LEGO Star Wars Millennium Falcon Collector Series Set 75192 | LEGO | Argos",
         "url": "https://www.reddit.com/r/legodeals/comments/1xs3n6t/buy_lego_star_wars_millennium_falcon_collector/",
         "fecha": "2026-11-09T21:01:51+00:00",
-        "antiguedad_dias": 1.1
+        "antiguedad_dias": 1.2
       },
-      "detectada_en": "2026-11-11T00:26:10+00:00",
+      "detectada_en": "2026-11-11T01:13:39+00:00",
       "notas_set": "El set más reconocible de Star Wars UCS; altísima liquidez en reventa."
     }
   ],
