@@ -23,6 +23,13 @@ watchlist.json
 .env.*
 !.env.example
 
+# --- Testing ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
 # --- OS / editors ---
 .DS_Store
 Thumbs.db

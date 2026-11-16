@@ -1,0 +1,32 @@
+# Configuración de herramientas de desarrollo (no es un paquete instalable).
+# Aquí solo vive la configuración de pytest y cobertura.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Permite `import main`, `import config`, etc. desde la raíz del repo sin
+# instalar el proyecto como paquete.
+pythonpath = ["."]
+# --strict-markers: falla si un test usa un marker no declarado (evita typos).
+addopts = "-ra --strict-markers"
+markers = [
+    "integracion: tests que usan dobles de E/S (red/ficheros) pero no salen a Internet",
+]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    ".venv/*",
+    "venv/*",
+    "examples/*",
+    "__pycache__/*",
+]
+
+[tool.coverage.report]
+# Ramas que no tiene sentido cubrir con tests.
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+show_missing = true
