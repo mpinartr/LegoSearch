@@ -33,10 +33,15 @@ log = logging.getLogger(__name__)
 
 def construir_calendario(api_key: str | None, *, temas: list[str],
                          años: list[str], meses_horizonte: int = 24,
-                         timeout: int = 30) -> list[dict[str, Any]]:
+                         timeout: int = 30, get=None,
+                         max_consultas: int | None = None) -> list[dict[str, Any]]:
     """Devuelve los sets que se retiran dentro del horizonte, ya ordenados.
 
     Orden: primero los que se retiran antes (más urgentes para decidir).
+
+    ``get`` es un seam de test: sustituye ``requests.get`` por un doble.
+    ``max_consultas`` limita el número de peticiones (cuota de Brickset); al
+    alcanzarlo se detiene y se registra que la cobertura es parcial.
     """
     if not api_key:
         return []
@@ -45,15 +50,27 @@ def construir_calendario(api_key: str | None, *, temas: list[str],
     limite = (hoy + timedelta(days=meses_horizonte * 31)).isoformat()
     resultados: dict[str, dict[str, Any]] = {}
     consultas = 0
+    agotado = False
 
     for tema in temas:
+        if agotado:
+            break
         for año in años:
-            sets = _consultar(api_key, tema, año, timeout)
+            if max_consultas is not None and consultas >= max_consultas:
+                agotado = True
+                break
+            sets = _consultar(api_key, tema, año, timeout, get=get)
             consultas += 1
             for s in sets:
                 set_ = _normalizar_eol(s, hoy.isoformat(), limite)
                 if set_:
                     resultados[set_["referencia"]] = set_
+
+    if agotado:
+        log.warning(
+            "Calendario EoL: límite de %d consultas alcanzado; cobertura parcial.",
+            max_consultas,
+        )
 
     log.info(
         "Calendario EoL: %d sets retiran en %d meses (%d consultas a Brickset)",
@@ -65,10 +82,12 @@ def construir_calendario(api_key: str | None, *, temas: list[str],
     )
 
 
-def _consultar(api_key: str, tema: str, año: str, timeout: int) -> list[dict]:
+def _consultar(api_key: str, tema: str, año: str, timeout: int,
+               *, get=None) -> list[dict]:
     """Pide los sets de un tema y año. Un fallo puntual no detiene el resto."""
+    obtener = get or requests.get
     try:
-        respuesta = requests.get(
+        respuesta = obtener(
             f"{API_URL}/getSets",
             params={
                 "apiKey": api_key,

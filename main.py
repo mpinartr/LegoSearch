@@ -66,8 +66,13 @@ APP_VERSION = "1.0.0"
 SCHEMA_VERSION = "1.0"
 
 
-def ahora_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+def ahora_iso(ahora: datetime | None = None) -> str:
+    """Marca de tiempo ISO-8601 en UTC.
+
+    ``ahora`` permite inyectar el reloj en tests (seam). Sin argumento usa el
+    reloj del sistema, igual que antes.
+    """
+    return (ahora or datetime.now(timezone.utc)).isoformat(timespec="seconds")
 
 
 log = logging.getLogger("legosearch")
@@ -183,11 +188,16 @@ def parse_fecha(entry: Any) -> datetime | None:
     return None
 
 
-def dias_desde(fecha: datetime | None) -> float:
-    """Días transcurridos desde ``fecha``; infinito si no hay fecha conocida."""
+def dias_desde(fecha: datetime | None, *, ahora: datetime | None = None) -> float:
+    """Días transcurridos desde ``fecha``; infinito si no hay fecha conocida.
+
+    ``ahora`` es un seam para tests: permite calcular la antigüedad contra un
+    instante fijo sin depender del reloj del sistema.
+    """
     if fecha is None:
         return float("inf")
-    return max(0.0, (datetime.now(timezone.utc) - fecha).total_seconds() / 86400.0)
+    referencia = ahora or datetime.now(timezone.utc)
+    return max(0.0, (referencia - fecha).total_seconds() / 86400.0)
 
 
 # ---------------------------------------------------------------------------
@@ -500,7 +510,7 @@ def evaluar_coleccionista(set_: dict) -> tuple[int, str]:
 _DIAS_RETIRADA_INMINENTE = 180
 
 
-def evaluar_retirada(set_: dict) -> tuple[int, str]:
+def evaluar_retirada(set_: dict, *, hoy: date | None = None) -> tuple[int, str]:
     """Puntúa de 0 a 2 la cercanía de la retirada.
 
     Se apoya en la fecha oficial de Brickset (``exit_date``) cuando está
@@ -515,6 +525,7 @@ def evaluar_retirada(set_: dict) -> tuple[int, str]:
     no incluye ``exit_date`` (la fecha solo llega al enriquecer con Brickset),
     así que sin esta vía los sets marcados como "Próximo EoL" puntuarían 0.
     """
+    referencia = hoy or date.today()
     exit_date = set_.get("exit_date")
     if exit_date:
         try:
@@ -522,7 +533,7 @@ def evaluar_retirada(set_: dict) -> tuple[int, str]:
         except (ValueError, TypeError):
             fecha = None
         if fecha is not None:
-            dias = (fecha - date.today()).days
+            dias = (fecha - referencia).days
             if dias < 0:
                 # Ya retirado: el precio de compra a PVP suele haber desaparecido.
                 return 0, f"retirado hace {abs(dias)} días"
@@ -702,13 +713,21 @@ def _host_con_pausa(host: str) -> bool:
 
 
 def rastrear_feeds(seleccion: list[str] | None = None,
-                   limite_override: int | None = None) -> tuple[list[Entry], list[dict]]:
+                   limite_override: int | None = None, *,
+                   sesion: requests.Session | None = None,
+                   descargar_feed_fn=None) -> tuple[list[Entry], list[dict]]:
     """Recorre todas las fuentes. Devuelve (entradas, estado_de_cada_feed).
 
     Una fuente caída NUNCA detiene la ejecución: se reporta en ``estado``
     y se continúa con la siguiente.
+
+    Seams de test (sin red):
+        ``sesion``: sesión HTTP reutilizable (por defecto se crea una).
+        ``descargar_feed_fn``: callable ``url -> feed | None`` que sustituye a
+        ``descargar_feed`` para inyectar feeds falsos.
     """
-    sesion = crear_sesion()
+    sesion = sesion or crear_sesion()
+    obtener = descargar_feed_fn or (lambda url: descargar_feed(sesion, url))
     entradas: list[Entry] = []
     estado: list[dict] = []
     feeds = cfg.FEEDS
@@ -730,7 +749,7 @@ def rastrear_feeds(seleccion: list[str] | None = None,
             time.sleep(float(cfg.RED["pausa_entre_peticiones_s"]))
         ultimo_host = host
         log.info("[%d/%d] %s", i, len(feeds), feed_cfg["nombre"])
-        feed = descargar_feed(sesion, feed_cfg["url"])
+        feed = obtener(feed_cfg["url"])
         if feed is None:
             estado.append({"nombre": feed_cfg["nombre"], "ok": False, "entradas": 0})
             continue
@@ -793,6 +812,17 @@ def confianza_cruce(entry: Entry, referencia: str, set_: dict) -> int:
     return int(min(100, confianza))
 
 
+def _precio_stock(set_: dict) -> float | None:
+    """Precio de compra actual según BrickLink (stock), si está disponible."""
+    stock = set_.get("bricklink_compra") or {}
+    valor = stock.get("precio_min") or stock.get("precio_medio")
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return None
+    return numero if numero > 0 else None
+
+
 def elegir_precio_compra(entry: Entry, set_: dict) -> tuple[float, PriceMatch | None, str]:
     """Selecciona el precio de compra efectivo y su origen.
 
@@ -800,6 +830,8 @@ def elegir_precio_compra(entry: Entry, set_: dict) -> tuple[float, PriceMatch | 
         - ``"oferta_detectada"``: hay un precio real con descuento sobre el PVP
         - ``"descuento_porcentual"``: no hay importe, pero sí un "% off"; se
           deriva del PVP oficial
+        - ``"mercado_stock"``: sin importe en la entrada, pero BrickLink conoce
+          el precio de compra actual y está por debajo del PVP
         - ``"precio_objetivo_compra"``: no hay oferta; se usa el objetivo
 
     REGLA ANTI-MSRP (el núcleo del filtrado)
@@ -851,6 +883,20 @@ def elegir_precio_compra(entry: Entry, set_: dict) -> tuple[float, PriceMatch | 
             )
             return derivado, match, "descuento_porcentual"
 
+    # Sin importe en la entrada, pero BrickLink conoce el precio de compra
+    # actual (stock). Solo se usa si la entrada es una señal de compra, para no
+    # convertir noticias genéricas en "chollos".
+    if entry.tipo == "ofertas" or _OFERTA_VIVA_RE.search(entry.texto):
+        stock = _precio_stock(set_)
+        if stock is not None and minimo <= stock <= maximo_oferta:
+            match = PriceMatch(
+                valor=stock,
+                texto_original="stock BrickLink",
+                posicion=0,
+                etiqueta="oferta",
+            )
+            return stock, match, "mercado_stock"
+
     return objetivo, None, "precio_objetivo_compra"
 
 
@@ -896,6 +942,15 @@ def evaluar_oportunidades(entradas: list[Entry],
             score_col, col_label = evaluar_coleccionista(set_)
             if score_col < int(filtros["score_minimo_coleccionista"]):
                 descartar(ref, entry, f"coleccionista {score_col}/3 (mínimo {filtros['score_minimo_coleccionista']})")
+                continue
+
+            # --- Filtro A2: liquidez real (solo si BrickLink dio datos) ---
+            # Un set con buen ROI pero sin ventas reales es difícil de revender.
+            # Sin datos de BrickLink no se puede juzgar y no se filtra.
+            minimo_liquidez = int(filtros.get("liquidez_minima_unidades", 0) or 0)
+            unidades = (set_.get("bricklink") or {}).get("unidades")
+            if minimo_liquidez and isinstance(unidades, int) and unidades < minimo_liquidez:
+                descartar(ref, entry, f"liquidez {unidades} < {minimo_liquidez} ventas")
                 continue
 
             # --- Vigencia de la señal -------------------------------------
@@ -1118,8 +1173,13 @@ def _contraste_suelo(op: dict, suelo_previo: dict[str, dict]) -> dict:
     }
 
 
-def serializar_candidate(c: Candidate, ranking: int | None = None) -> dict:
-    """Convierte una ``Candidate`` en el dict que consumirá el superagente."""
+def serializar_candidate(c: Candidate, ranking: int | None = None,
+                         *, ahora: datetime | None = None) -> dict:
+    """Convierte una ``Candidate`` en el dict que consumirá el superagente.
+
+    ``ahora`` inyecta el reloj (seam de tests) para ``detectada_en`` y la
+    antigüedad de la fuente.
+    """
     op = asdict(c.financiero)
     descuento_pct = round(
         (1 - c.precio_compra / c.set["precio_oficial"]) * 100.0, 2
@@ -1133,7 +1193,11 @@ def serializar_candidate(c: Candidate, ranking: int | None = None) -> dict:
         "id": referencia_huella(c),
         "schema_version": SCHEMA_VERSION,
         "ranking": ranking,
-        "tipo": "chollo" if c.origen_precio == "oferta_detectada" else "señal_vigilancia",
+        "tipo": (
+            "chollo"
+            if c.origen_precio in ("oferta_detectada", "mercado_stock")
+            else "señal_vigilancia"
+        ),
         "referencia": c.referencia,
         "nombre": c.set["nombre"],
         "tematica": c.set["tematica"],
@@ -1167,9 +1231,12 @@ def serializar_candidate(c: Candidate, ranking: int | None = None) -> dict:
             "titulo": c.entry.titulo,
             "url": c.entry.url,
             "fecha": c.entry.fecha.isoformat() if c.entry.fecha else None,
-            "antiguedad_dias": round(dias_desde(c.entry.fecha), 1) if c.entry.fecha else None,
+            "antiguedad_dias": (
+                round(dias_desde(c.entry.fecha, ahora=ahora), 1)
+                if c.entry.fecha else None
+            ),
         },
-        "detectada_en": ahora_iso(),
+        "detectada_en": ahora_iso(ahora),
         "notas_set": c.set.get("notas", ""),
     }
 
@@ -1237,7 +1304,11 @@ def actualizar_historico(existente: dict, nuevas: list[dict],
             op["plan_reventa"] = estimar_reventa(set_)
         if "tipo" not in op:
             origen = (op.get("precios") or {}).get("origen", "")
-            op["tipo"] = "chollo" if origen == "oferta_detectada" else "señal_vigilancia"
+            op["tipo"] = (
+                "chollo"
+                if origen in ("oferta_detectada", "mercado_stock")
+                else "señal_vigilancia"
+            )
         if "margen_mensual_pct" not in op.get("financiero", {}):
             fin = op.setdefault("financiero", {})
             fin["margen_mensual_pct"] = round(
@@ -1585,9 +1656,12 @@ def escribir_reporte_md(ruta: Path, datos: dict, nuevas: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def entradas_simuladas() -> list[Entry]:
-    """Datos de ejemplo con el mismo formato que produce el rastreo real."""
-    ahora = datetime.now(timezone.utc)
+def entradas_simuladas(ahora: datetime | None = None) -> list[Entry]:
+    """Datos de ejemplo con el mismo formato que produce el rastreo real.
+
+    ``ahora`` permite fijar el instante de referencia en tests.
+    """
+    ahora = ahora or datetime.now(timezone.utc)
     crudas = [
         {
             "feed": "Chollometro (LEGO)", "tipo": "ofertas", "valor_eur": 1.0,
@@ -1656,10 +1730,36 @@ def _calendario_si_activo(args: argparse.Namespace) -> list[dict]:
             temas=conf["temas"],
             años=conf["años"],
             meses_horizonte=conf["meses_horizonte"],
+            max_consultas=conf.get("max_consultas"),
         )
     except Exception as exc:  # noqa: BLE001 — el calendario es opcional
         log.warning("Calendario EoL omitido (%s)", type(exc).__name__)
         return []
+
+
+def _enriquecer_con_mercado(watchlist: dict[str, dict],
+                            args: argparse.Namespace) -> None:
+    """Sustituye precios de reventa estimados por los reales de BrickLink.
+
+    Se omite en ``--simulate`` (que promete no tocar red) y con
+    ``--sin-bricklink``. Sin credenciales, el cliente queda inactivo y no hace
+    nada: el motor sigue con las estimaciones de ``config.py``.
+    """
+    if getattr(args, "simulate", False) or getattr(args, "sin_bricklink", False):
+        return
+    try:
+        from mercado import BrickLinkClient, enriquecer_watchlist
+    except ImportError as exc:  # pragma: no cover - instalación incompleta
+        log.warning("Módulo de mercado no disponible (%s)", exc)
+        return
+
+    cliente = BrickLinkClient.desde_entorno()
+    if not cliente.activo:
+        log.debug("BRICKLINK_* no definidas: se usan las estimaciones de config.py")
+        return
+
+    incluir_compra = bool((getattr(cfg, "MERCADO", {}) or {}).get("consultar_compra", True))
+    enriquecer_watchlist(watchlist, cliente, incluir_compra=incluir_compra)
 
 
 def ejecutar(args: argparse.Namespace) -> int:
@@ -1681,6 +1781,7 @@ def ejecutar(args: argparse.Namespace) -> int:
             temas=conf["temas"],
             años=conf["años"],
             meses_horizonte=conf["meses_horizonte"],
+            max_consultas=conf.get("max_consultas"),
         )
         if args.top:
             # Con --top mostramos los más caros: el interés para revender
@@ -1726,6 +1827,10 @@ def ejecutar(args: argparse.Namespace) -> int:
             cliente_brickset.enriquecer_watchlist(watchlist)
         else:
             log.debug("BRICKSET_API_KEY no definida: se usan los precios de config.py")
+
+    # Precio de reventa real y liquidez (BrickLink). Opcional: sin credenciales
+    # se mantienen las estimaciones de config.py.
+    _enriquecer_con_mercado(watchlist, args)
 
     # --- 1 + 2: rastreo y extracción -----------------------------------
     if args.simulate:
@@ -1855,6 +1960,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
                         help="Muestra el ranking del JSON existente y sale (sin red).")
     parser.add_argument("--sin-brickset", action="store_true",
                         help="No consulta la API de Brickset aunque haya API key.")
+    parser.add_argument("--sin-bricklink", action="store_true",
+                        help="No consulta la API de BrickLink aunque haya credenciales.")
     parser.add_argument("--eol", action="store_true",
                         help="Muestra el calendario de retiradas y sale (requiere Brickset).")
     parser.add_argument("--csv", metavar="RUTA", default=None,

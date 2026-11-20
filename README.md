@@ -62,6 +62,7 @@ Opciones de CLI:
 | `--top N` | Muestra solo las N mejores oportunidades en la tabla. |
 | `--tabla` | Imprime el ranking del JSON existente y sale (sin red). |
 | `--sin-brickset` | No consulta la API de Brickset aunque haya `BRICKSET_API_KEY`. |
+| `--sin-bricklink` | No consulta la API de BrickLink aunque haya credenciales. |
 | `--eol [--top N]` | Calendario de retiradas: qué sets dejan de fabricarse y cuándo. |
 | `--csv RUTA` | Exporta el ranking a CSV (con `--tabla`, sin volver a rastrear). |
 | `--verbose`, `-v` | Log detallado, incluyendo **por qué se descarta** cada candidato. |
@@ -75,12 +76,19 @@ Todo el comportamiento se ajusta en un único fichero, sin tocar el motor:
 - **`FILTROS`** — criterios de coleccionista (`piezas_alto_volumen`,
   `score_minimo_coleccionista`), vigencia de la oferta
   (`dias_max_antiguedad_oferta` = 45, `dias_max_antiguedad_news` = 365),
-  anti-ruido (`precio_minimo_pct_pvp`) y umbrales de scoring
-  (`score_total_minimo`, `confianza_minima_cruce`).
+  anti-ruido (`precio_minimo_pct_pvp`), liquidez mínima
+  (`liquidez_minima_unidades`, solo si BrickLink aporta datos) y umbrales de
+  scoring (`score_total_minimo`, `confianza_minima_cruce`).
 
 > Los umbrales están deliberadamente **bajos**: el score sirve para *ordenar*
 > la tabla, no para esconder resultados. El filtro que de verdad protege la
 > calidad es el contexto LEGO + los umbrales financieros.
+
+- **`MERCADO`** — `consultar_compra`: consultar también el precio de compra
+  actual de BrickLink (`stock`) para saber si hoy se puede comprar por debajo
+  del mercado. Duplica las peticiones por set; se puede desactivar.
+- **`CALENDARIO_EOL`** — temas y años que se consultan en Brickset, más
+  `max_consultas` para no agotar la cuota gratuita (~100/día).
 - **`FEEDS`** — fuentes RSS. Cada entrada tiene `tipo` (`ofertas`, `eol`,
   `noticias`) y `valor_eur` (fiabilidad 0–1, pondera el score).
 - **`WATCHLIST`** — base de datos local de sets (ver abajo).
@@ -322,6 +330,7 @@ workflow. El superagente puede lanzarlo igual con esa misma petición.
 LegoSearch/
 ├── config.py                 # Finanzas, filtros, feeds y watchlist
 ├── brickset.py               # Precios reales vía API de Brickset (opcional)
+├── mercado.py                # Reventa/liquidez/compra real vía BrickLink (opcional)
 ├── calendario.py             # Calendario de retiradas (EoL) por tema y año
 ├── main.py                   # Motor completo (rastreo → filtro dual → export)
 ├── requirements.txt          # feedparser, requests
@@ -374,6 +383,37 @@ Sin key, todo funciona igual que antes: el enriquecimiento es opcional y el
 motor nunca falla por no tenerla. En GitHub Actions, añade
 `BRICKSET_API_KEY` (y opcionalmente `BRICKSET_USER_HASH`) como *secret*.
 
+### Precios reales de reventa con BrickLink (opcional)
+
+Brickset no publica precios de mercado. [BrickLink](https://www.bricklink.com)
+sí: su *Price Guide* da el precio de **ventas realizadas** y la **liquidez**,
+además del precio de **compra actual** (anuncios a la venta). Con las cuatro
+credenciales configuradas, la app sustituye las estimaciones de `config.py` por
+datos reales y marca `reventa_verificada: true`, así que el ROI deja de ser
+orientativo.
+
+El acceso es gratuito, pero requiere cuenta verificada y registrar una app
+(OAuth 1.0a): https://www.bricklink.com/v2/api/register_consumer.page
+
+```bash
+echo 'BRICKLINK_CONSUMER_KEY=...'      >> .env
+echo 'BRICKLINK_CONSUMER_SECRET=...'   >> .env
+echo 'BRICKLINK_TOKEN=...'             >> .env
+echo 'BRICKLINK_TOKEN_SECRET=...'      >> .env
+set -a && source .env && set +a
+
+python main.py --dry-run
+```
+
+- Configura la cuenta de BrickLink en **EUR**: la Price Guide no devuelve divisa.
+- `precios.origen: "mercado_stock"` indica que el precio de compra viene del
+  **stock actual** de BrickLink porque el feed no traía importe (solo se aplica
+  a señales de compra y por debajo del PVP).
+- **Filtro de liquidez:** `FILTROS["liquidez_minima_unidades"]` descarta sets con
+  pocas ventas reales. `0` lo desactiva; sin datos de BrickLink no se aplica.
+- `MERCADO["consultar_compra"] = False` evita la segunda petición por set.
+- Sin credenciales, todo funciona igual que antes con las estimaciones.
+
 ### Calendario de retiradas (EoL)
 
 La misma API da `exitDate`, la fecha en que LEGO deja de fabricar un set.
@@ -414,6 +454,10 @@ docker run --rm legosearch python main.py --once
 | Variable | Efecto | Defecto |
 |---|---|---|
 | `BRICKSET_API_KEY` | PVP oficial y fechas de retirada | — |
+| `BRICKLINK_CONSUMER_KEY` | Reventa real, liquidez y compra (OAuth 1.0a) | — |
+| `BRICKLINK_CONSUMER_SECRET` | Secreto OAuth de BrickLink | — |
+| `BRICKLINK_TOKEN` | Token OAuth de BrickLink | — |
+| `BRICKLINK_TOKEN_SECRET` | Secreto del token OAuth | — |
 | `LOOP_MODE` | `1` = proceso continuo | — |
 | `LEGO_REVISION_MINUTOS` | Minutos entre escaneos | `360` |
 | `SCAN_INTERVAL_MINUTES` | Alias antiguo (se acepta) | — |

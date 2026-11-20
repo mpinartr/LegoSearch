@@ -1,0 +1,32 @@
+# CI de tests — independiente del workflow de escaneo (monitor.yml).
+#
+# Corre en cada push y en cada pull request. Es la red que impide que una
+# actualización de código rompa el motor sin que nos enteremos.
+#
+# Fase 4: además de ejecutar pytest, se exige un umbral mínimo de cobertura.
+# Si la cobertura baja del 80 %, el job falla y el PR no debería mergearse.
+# (La protección de rama que bloquea el merge se activa en Settings > Branches.)
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest --cov=. --cov-report=term-missing --cov-fail-under=80

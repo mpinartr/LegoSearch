@@ -55,9 +55,11 @@ PAISES_PREFERIDOS = ("DE", "ES", "FR", "IT", "NL", "UK", "US", "CA")
 class BricksetClient:
     """Cliente mínimo de la API v3 de Brickset, con caché en memoria."""
 
-    def __init__(self, api_key: str | None, *, timeout: int = 20) -> None:
+    def __init__(self, api_key: str | None, *, timeout: int = 20, get=None) -> None:
         self.api_key = (api_key or "").strip() or None
         self.timeout = timeout
+        # Seam de test: permite sustituir la llamada HTTP sin tocar la red.
+        self._get = get or requests.get
         self._cache: dict[str, dict[str, Any] | None] = {}
 
     @classmethod
@@ -80,7 +82,7 @@ class BricksetClient:
         # Sin el sufijo "-1" la API responde success con 0 sets.
         numero = referencia if "-" in referencia else f"{referencia}-1"
         try:
-            respuesta = requests.get(
+            respuesta = self._get(
                 f"{API_URL}/getSets",
                 params={
                     "apiKey": self.api_key,
@@ -112,8 +114,12 @@ class BricksetClient:
         self._cache[referencia] = datos
         return datos
 
-    def enriquecer_watchlist(self, watchlist: dict[str, dict]) -> dict[str, int]:
+    def enriquecer_watchlist(self, watchlist: dict[str, dict], *,
+                             hoy: str | None = None) -> dict[str, int]:
         """Completa la watchlist con datos oficiales, in situ.
+
+        ``hoy`` (ISO ``YYYY-MM-DD``) inyecta la fecha de referencia para
+        clasificar ``exitDate``; por defecto usa la del sistema.
 
         Sobrescribe ``precio_oficial`` cuando Brickset tiene un PVP europeo
         (es más fiable que el valor manual) y ajusta ``estado_eol`` según
@@ -126,7 +132,7 @@ class BricksetClient:
         if not self.activo:
             return cuenta
 
-        hoy = _hoy_iso()
+        hoy = hoy or _hoy_iso()
         for ref, set_ in watchlist.items():
             cuenta["consultados"] += 1
             datos = self.datos(ref)

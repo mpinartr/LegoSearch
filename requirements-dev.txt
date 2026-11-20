@@ -1,0 +1,15 @@
+# LegoSearch — dependencias SOLO para desarrollo y CI.
+# No se instalan en la imagen de producción (ver requirements.txt).
+#
+#   python3 -m venv .venv
+#   source .venv/bin/activate
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# pytest        : runner de tests.
+# pytest-cov    : informe de cobertura (--cov).
+# freezegun     : congela el reloj para tests de fechas/EoL.
+# responses     : simula respuestas HTTP sin tocar la red.
+pytest>=8
+pytest-cov>=5
+freezegun>=1.4
+responses>=0.25
