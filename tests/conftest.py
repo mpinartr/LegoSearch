@@ -58,6 +58,18 @@ WATCHLIST_MINIMA: dict[str, dict] = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _sin_credenciales_reales(monkeypatch):
+    """Ningún test debe salir a APIs reales por variables del entorno del dev."""
+    for var in (
+        "BRICKLINK_CONSUMER_KEY",
+        "BRICKLINK_CONSUMER_SECRET",
+        "BRICKLINK_TOKEN",
+        "BRICKLINK_TOKEN_SECRET",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+
 @pytest.fixture
 def watchlist() -> dict[str, dict]:
     """Watchlist validada y mínima, independiente de config.py y del disco."""

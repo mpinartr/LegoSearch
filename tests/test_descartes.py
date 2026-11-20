@@ -49,6 +49,40 @@ def test_descarta_por_coleccionista(monkeypatch, make_entry, watchlist):
     assert "coleccionista 3/3" in descartadas[0]["motivo"]
 
 
+def test_descarta_por_liquidez(make_entry, watchlist):
+    watchlist["75192"]["bricklink"] = {"unidades": 2}
+    _, descartadas = main.evaluar_oportunidades([_oferta(make_entry)], watchlist)
+    assert "liquidez 2" in descartadas[0]["motivo"]
+
+
+def test_liquidez_suficiente_no_descarta(make_entry, watchlist):
+    watchlist["75192"]["bricklink"] = {"unidades": 50}
+    validas, _ = main.evaluar_oportunidades([_oferta(make_entry)], watchlist)
+    assert any(c.referencia == "75192" for c in validas)
+
+
+def test_sin_datos_de_liquidez_no_filtra(make_entry, watchlist):
+    # Sin bricklink no se puede juzgar: no debe descartarse por liquidez.
+    assert "bricklink" not in watchlist["75192"]
+    validas, descartadas = main.evaluar_oportunidades([_oferta(make_entry)], watchlist)
+    assert any(c.referencia == "75192" for c in validas)
+    assert all("liquidez" not in d["motivo"] for d in descartadas)
+
+
+def test_liquidez_se_puede_desactivar(monkeypatch, make_entry, watchlist):
+    monkeypatch.setitem(main.cfg.FILTROS, "liquidez_minima_unidades", 0)
+    watchlist["75192"]["bricklink"] = {"unidades": 0}
+    validas, _ = main.evaluar_oportunidades([_oferta(make_entry)], watchlist)
+    assert any(c.referencia == "75192" for c in validas)
+
+
+def test_oportunidad_con_stock_de_bricklink(make_entry, watchlist):
+    watchlist["75192"]["bricklink_compra"] = {"precio_min": 600.0}
+    entry = make_entry("lego 75192 falcon oferta", tipo="ofertas", fecha=_ahora())
+    validas, _ = main.evaluar_oportunidades([entry], watchlist)
+    assert any(c.origen_precio == "mercado_stock" for c in validas)
+
+
 def test_descarta_por_antiguedad(make_entry, watchlist):
     entry = make_entry(
         "solo 500 € lego 75192 falcon", tipo="ofertas",

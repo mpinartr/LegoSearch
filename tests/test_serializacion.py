@@ -100,6 +100,15 @@ def test_serializar_candidate_estructura_y_valores(candidate):
 
 
 @freeze_time("2026-11-16T10:00:00+00:00")
+def test_serializar_mercado_stock_es_chollo(candidate):
+    candidate.origen_precio = "mercado_stock"
+    candidate.precio_detectado = main.PriceMatch(600.0, "stock BrickLink", 0, "oferta")
+    op = main.serializar_candidate(candidate, ranking=1)
+    assert op["tipo"] == "chollo"
+    assert op["precios"]["origen"] == "mercado_stock"
+
+
+@freeze_time("2026-11-16T10:00:00+00:00")
 def test_serializar_sin_precio_detectado_es_senal_vigilancia(candidate):
     candidate.precio_detectado = None
     candidate.origen_precio = "precio_objetivo_compra"

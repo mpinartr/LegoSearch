@@ -61,6 +61,17 @@ FINANZAS = {
 }
 
 # ---------------------------------------------------------------------------
+# 2b. MERCADO DE SEGUNDA MANO (BrickLink)
+# ---------------------------------------------------------------------------
+MERCADO = {
+    # Consultar también el precio de compra actual (guide_type=stock), no solo
+    # las ventas realizadas. Duplica las peticiones a BrickLink por set, pero
+    # permite saber si hoy se puede comprar por debajo del mercado. Ponlo a
+    # False si necesitas reducir consumo de la API.
+    "consultar_compra": True,
+}
+
+# ---------------------------------------------------------------------------
 # 3. FILTRO DUAL — CRITERIOS DE COLECCIÓN / INVERSOR
 # ---------------------------------------------------------------------------
 FILTROS = {
@@ -74,9 +85,17 @@ FILTROS = {
     "piezas_alto_volumen": 1_000,   # piezas >= este valor => volumen alto
     "score_minimo_coleccionista": 1,  # antes 2: un único criterio ya es suficiente
 
+    # --- Liquidez real (BrickLink) -------------------------------------
+    # Un set puede subir de valor y aun así venderse mal. Si BrickLink aporta
+    # datos de ventas realizadas, se descartan los que tengan menos de N
+    # unidades vendidas en el periodo de la Price Guide (liquidez baja).
+    # 0 desactiva el filtro. Sin datos de BrickLink no se aplica (no se puede
+    # juzgar), así que sin credenciales el comportamiento no cambia.
+    "liquidez_minima_unidades": 5,
+
     # --- Vigencia de la oferta ------------------------------------------
     # Si la noticia es más antigua que esto, el precio detectado probablemente
-    # ya no esté vigente. Se mantiene fuera del JSON de "oportunidades" y se
+    # ya no esté vigente. Se mantiene fuera el JSON de "oportunidades" y se
     # reporta como descartada.
     "dias_max_antiguedad_oferta": 45,      # días para aceptar una oferta
     "dias_max_antiguedad_news": 365,       # días para señales de EoL/rumor
@@ -183,6 +202,7 @@ CALENDARIO_EOL = {
     "temas": [
         "Star Wars",
         "Creator Expert",
+        "Creator",
         "Icons",
         "Ideas",
         "Technic",
@@ -191,9 +211,15 @@ CALENDARIO_EOL = {
         "Disney",
         "Super Mario",
         "Ninjago",
+        "City",
     ],
-    "años": ["2023", "2024", "2025"],
+    "años": ["2022", "2023", "2024", "2025"],
     "meses_horizonte": 24,
+    # Presupuesto de peticiones a Brickset para el calendario. La clave
+    # gratuita permite ~100 peticiones/día y el enriquecimiento de la
+    # watchlist (~28 sets) ya consume parte. 12 temas × 4 años = 48, que deja
+    # margen (28 + 48 = 76). Si se amplía la lista, sube este tope con cuidado.
+    "max_consultas": 48,
 }
 
 # ---------------------------------------------------------------------------

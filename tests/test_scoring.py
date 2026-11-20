@@ -77,6 +77,31 @@ def test_sin_precio_cae_al_objetivo(watchlist, make_entry):
     assert origen == "precio_objetivo_compra"
 
 
+def test_usa_stock_bricklink_como_precio_de_mercado(watchlist, make_entry):
+    watchlist["75192"]["bricklink_compra"] = {"precio_min": 700.0}
+    entry = make_entry("lego 75192 falcon oferta", tipo="ofertas")
+    precio, match, origen = main.elegir_precio_compra(entry, watchlist["75192"])
+    assert precio == 700.0
+    assert origen == "mercado_stock"
+    assert match is not None and match.texto_original == "stock BrickLink"
+
+
+def test_stock_no_se_usa_sin_senal_de_compra(watchlist, make_entry):
+    watchlist["75192"]["bricklink_compra"] = {"precio_min": 700.0}
+    entry = make_entry("lego 75192 falcon noticia", tipo="noticias")
+    _, match, origen = main.elegir_precio_compra(entry, watchlist["75192"])
+    assert match is None
+    assert origen == "precio_objetivo_compra"
+
+
+def test_stock_por_encima_del_pvp_no_es_mercado(watchlist, make_entry):
+    watchlist["75192"]["bricklink_compra"] = {"precio_min": 820.0}
+    entry = make_entry("lego 75192 oferta", tipo="ofertas")
+    _, match, origen = main.elegir_precio_compra(entry, watchlist["75192"])
+    assert match is None
+    assert origen == "precio_objetivo_compra"
+
+
 # ---------------------------------------------------------------------------
 # calcular_score
 # ---------------------------------------------------------------------------
